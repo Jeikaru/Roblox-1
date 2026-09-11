@@ -92,14 +92,10 @@ local Macros = {}
 
 benchmark_time = os.clock()
 
--- ============================================================
--- NEW RAYFIELD LOAD (updated URL)
--- ============================================================
+-- NEW RAYFIELD LOAD (simple fix)
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- ============================================================
 -- NEW RAYFIELD CreateWindow (removed LoadingVersion, added ShowText/ToggleUIKeybind)
--- ============================================================
 local Window = Rayfield:CreateWindow({
     Name = string.format(
         "KarmaPanda's All Star Tower Defense Script (Version %s)", version),
@@ -2043,7 +2039,6 @@ local function CreateMiniGUI()
     end
 end
 
--- ============================================================
 -- UI: Updated for new Rayfield API
 -- Key changes:
 --   - OldCreateDropdown -> CreateDropdown (CurrentOption as table, MultipleOptions instead of MultiSelection)
@@ -2051,7 +2046,6 @@ end
 --   - Dropdown:Refresh(list, sel) -> Dropdown:Refresh(list) then Dropdown:Set({sel})
 --   - SectionParent removed (sections are visual-only; elements just go on the tab)
 --   - Notifications: Actions field removed (not supported in new API)
--- ============================================================
 function InitializeUI()
     local UnitList = get_all_units()
 
