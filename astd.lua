@@ -1,5 +1,23 @@
+-- it took me weeks to integrate new ui. rayfield was buggy asf.
 if not game:IsLoaded() then game.Loaded:Wait() end
 if game.GameId ~= 1720936166 then return end
+
+-- Share one running instance across repeated executions in this session.
+local sessionEnvironment = (getgenv and getgenv()) or shared
+local sessionKey = "KarmaPandaASTD_FacilitySession"
+local previousSession = sessionEnvironment[sessionKey]
+if previousSession then
+    if previousSession.Library then
+        pcall(function() previousSession.Library:ToggleUI(true) end)
+    end
+    warn("[KarmaPanda] Already running or loading; duplicate execution stopped.")
+    return
+end
+
+-- Reserve before any downloads/yields so simultaneous executions cannot race.
+local currentSession = {Loading = true}
+sessionEnvironment[sessionKey] = currentSession
+local started, startupError = xpcall(function()
 local benchmark_time = os.clock()
 
 -- Helper Functions
@@ -34,9 +52,7 @@ end
 
 local function TableLength(t)
     local n = 0
-
     for _ in pairs(t) do n = n + 1 end
-
     return n
 end
 
@@ -70,55 +86,66 @@ local function convert(n)
     end
 end
 
--- https://devforum.roblox.com/t/comparing-color-values/1017439/2
 local function CompareColor3(base, toCompare)
-    local base_colors = {base.R, base.G, base.B} -- table to hold the original color3s
-    local comp_colors = {toCompare.R, toCompare.G, toCompare.B} -- table to 
-
-    local verdict = {} -- table to hold whether other not each of them were the same
-
-    for index, col in ipairs(comp_colors) do -- uses an "ipairs" loop instead of "pairs" loop because this is numerical
-        if base_colors[index] == col then -- checks if the index of the base_colors table is the same
-            table.insert(verdict, true) -- add 1 true value to the verdict table
+    local base_colors = {base.R, base.G, base.B}
+    local comp_colors = {toCompare.R, toCompare.G, toCompare.B}
+    local verdict = {}
+    for index, col in ipairs(comp_colors) do
+        if base_colors[index] == col then
+            table.insert(verdict, true)
         else
-            table.insert(verdict, false) -- add 1 false value to the verdict table
+            table.insert(verdict, false)
         end
     end
-
-    if table.find(verdict, false) then -- if one of them is false then it isn't the same
-        return false -- returns false
+    if table.find(verdict, false) then
+        return false
     else
-        return true -- returns true
+        return true
     end
 end
 
-local version = "3.2"
+local version = "4.0 BETA"
 local Settings
 local Macros = {}
 
 benchmark_time = os.clock()
 
-local Rayfield = loadstring(game:HttpGet(
-                                'https://raw.githubusercontent.com/KarmaPanda/Roblox/refs/heads/main/rayfield.lua'))()
-
-local Window = Rayfield:CreateWindow({
-    Name = string.format(
-        "KarmaPanda's All Star Tower Defense Script (Version %s)", version),
-    LoadingTitle = "All Star Tower Defense Script",
-    LoadingSubtitle = "by KarmaPanda",
-    LoadingVersion = string.format("Version %s", version),
-    ConfigurationSaving = {Enabled = false},
-    Discord = {Enabled = true, Invite = "BrnQQGKbvE", RememberJoins = true},
-    KeySystem = false
+-- Facility UI; existing ASTD settings and macro persistence remain authoritative.
+local BASE = "https://raw.githubusercontent.com/FacilityHUB/UI-Facility/refs/heads/main/"
+local source = game:HttpGet(BASE .. "main.luau")
+local chunk, loadError = loadstring(source)
+assert(chunk, "Facility failed to compile: " .. tostring(loadError))
+local Library = chunk()
+assert(type(Library) == "table", "Facility did not return a library")
+currentSession.Library = Library
+Library.BaseUrl = BASE
+Library:SetToggleKey("K")
+local Window = Library:Window({
+    Title = string.format("KarmaPanda's ASTD | v%s", version),
+    Suffix = " | Facility",
+    Width = 760,
+    Height = 640,
+    TabStyle = "side",
+    TabWidth = 155,
+    MobileButton = true,
 })
 
-print("[KarmaPanda] Rayfield Loaded: " .. os.clock() - benchmark_time)
+-- Startup automation already runs before InitializeUI. Restore toggle visuals
+-- silently so Facility's default-true callback does not start duplicate loops.
+local function AddToggle(section, options)
+    local initial = options.Default == true
+    options.Default = false
+    local control = section:Toggle(options)
+    control:Set(initial, true)
+    if options.Flag then Library.Defaults[options.Flag] = initial end
+    return control
+end
+
+print("[KarmaPanda] Facility Loaded: " .. os.clock() - benchmark_time)
 benchmark_time = os.clock()
 
 if not isfolder("KarmaPanda") then makefolder("KarmaPanda") end
-
 if not isfolder("KarmaPanda\\ASTD") then makefolder("KarmaPanda\\ASTD") end
-
 if not isfolder("KarmaPanda\\ASTD\\Settings") then
     makefolder("KarmaPanda\\ASTD\\Settings")
 end
@@ -139,46 +166,43 @@ local InfiniteMapTable = {
     ["-99"] = "Farm"
 }
 
-local AdventureMapTable = {
-    ["-13"] = "String Raid",
-    ["-1003"] = "Sijin Raid",
-    ["-1004"] = "Spirit Raid",
-    ["-1111"] = "Marine HQ",
-    ["-1112"] = "Kai Planet",
-    ["-1113"] = "Hell",
-    ["-1114"] = "Machi Planet",
-    ["-1117"] = "Candy Raid",
-    ["-1118"] = "Demon Mark Raid",
-    ["-1121"] = "Soul Raid",
-    ["-1122"] = "Sun Raid",
-    ["-1125"] = "Meteor Raid",
-    ["-1127"] = "Berserker Raid",
-    ["-1128"] = "Venom Raid",
-    ["-1129"] = "Dueled Raid",
-    ["-1132"] = "Hunt On Blacksmith",
-    ["-1133"] = "Mythical Freedom",
-    ["-1134"] = "Bizare Prison",
-    ["-1136"] = "Six Eyes Raid",
-    ["-1142"] = "TOP1",
-    ["-1143"] = "TOP2",
-    ["-1144"] = "TOP3",
-    ["-1145"] = "TOP4",
-    ["-1146"] = "TOP5",
-    ["-1147"] = "TOP6",
-    ["-1155"] = "Demon Raid M2",
-    ["-1156"] = "Divine Raid",
-    ["-1450"] = "Random Boss Rush",
-    ["-1451"] = "Random Boss Rush 2",
-    ["-1506"] = "Path Raid",
-    ["-1550"] = "Enuma Raid",
-    ["-1168"] = "Demon Memory Raid",
-    ["-1167"] = "Ocean Memory Raid",
-    ["-1166"] = "Earth Tournament Memory Raid",
-    ["-1165"] = "Purple Planet Raid",
-    ["-1164"] = "Darkness Raid",
-    ["-1163"] = "Malevolent Raid",
-    ["-1162"] = "Crystal Cavern Raid"
-}
+local AdventureMapTable = {}
+
+-- Read loaded challenge cards without opening the mission chooser.
+local function RefreshAdventureMaps()
+    local parent = game:GetService("Players").LocalPlayer
+    for _, name in ipairs({"PlayerGui", "HUD", "MissionsV2", "MissionChooser", "Main", "Challenges"}) do
+        parent = parent and parent:FindFirstChild(name)
+    end
+
+    local detected = {}
+    if parent then
+        for _, child in ipairs(parent:GetChildren()) do
+            if tonumber(child.Name) then
+                local title = child:FindFirstChild("MissionTitle")
+                if title and (title:IsA("TextLabel") or title:IsA("TextButton")) then
+                    local name = title.Text:match("^%s*(.-)%s*$")
+                    if name ~= "" then detected[child.Name] = name end
+                end
+            end
+        end
+    end
+
+    local changed = false
+    for id, name in pairs(detected) do
+        if AdventureMapTable[id] ~= name then changed = true end
+    end
+    for id in pairs(AdventureMapTable) do
+        if detected[id] == nil then changed = true end
+    end
+    if changed then
+        table.clear(AdventureMapTable)
+        for id, name in pairs(detected) do AdventureMapTable[id] = name end
+    end
+    return changed
+end
+
+RefreshAdventureMaps()
 
 local function GetMapsFromTable(T)
     local maps = {}
@@ -190,79 +214,17 @@ local DefaultSettings = {
     version = version,
     auto_buff = true,
     auto_buff_units = {
-        ["Erwin"] = {
-            ["Mode"] = "Box",
-            ["Checks"] = {"attack"},
-            ["Ability Type"] = "Normal",
-            ["Time"] = 13
-        },
-        ["Merlin"] = {
-            ["Mode"] = "Pair",
-            ["Checks"] = {"range"},
-            ["Ability Type"] = "Normal",
-            ["Time"] = 30
-        },
-        ["Brook6"] = {
-            ["Mode"] = "Box",
-            ["Checks"] = {"attack", "range"},
-            ["Ability Type"] = "Normal",
-            ["Time"] = 13
-        },
-        ["Kisuke6"] = {
-            ["Mode"] = "Pair",
-            ["Checks"] = {"attack", "range"},
-            ["Ability Type"] = "Multiple",
-            ["Ability Name"] = "Buff Ability",
-            ["Time"] = 13
-        },
-        ["Rayleigh"] = {
-            ["Mode"] = "Box",
-            ["Checks"] = {"attack"},
-            ["Ability Type"] = "Normal",
-            ["Time"] = 13
-        },
-        ["Six Eyes Gojo"] = {
-            ["Mode"] = "Cycle",
-            ["Checks"] = {},
-            ["Ability Type"] = "Normal",
-            ["Cycle Units"] = 7,
-            ["Time"] = 10,
-            ["Delay"] = 1
-        },
-        ["Merlin6"] = {
-            ["Time"] = 13,
-            ["Checks"] = {"attack", "range"},
-            ["Mode"] = "Box",
-            ["Ability Type"] = "Normal"
-        },
-        ["Gojo7"] = {
-            ["Time"] = 9.5,
-            ["Checks"] = {""},
-            ["Mode"] = "Box",
-            ["Delay"] = 0,
-            ["Ability Type"] = "Normal"
-        },
-        ["Hoshino"] = {
-            ["Time"] = 15,
-            ["Checks"] = {""},
-            ["Mode"] = "Spam",
-            ["Delay"] = 0,
-            ["Ability Type"] = "Normal"
-        },
-        ["Metal Cooler"] = {
-            ["Time"] = 21,
-            ["Checks"] = {""},
-            ["Mode"] = "Spam",
-            ["Delay"] = 0.5,
-            ["Ability Type"] = "Normal"
-        },
-        ["Satorou Gojou"] = {
-            ["Time"] = 10,
-            ["Checks"] = {""},
-            ["Mode"] = "Box",
-            ["Delay"] = 0,
-            ["Ability Type"] = "Normal"
-        }
+        ["Erwin"] = {["Mode"] = "Box", ["Checks"] = {"attack"}, ["Ability Type"] = "Normal", ["Time"] = 13},
+        ["Merlin"] = {["Mode"] = "Pair", ["Checks"] = {"range"}, ["Ability Type"] = "Normal", ["Time"] = 30},
+        ["Brook6"] = {["Mode"] = "Box", ["Checks"] = {"attack", "range"}, ["Ability Type"] = "Normal", ["Time"] = 13},
+        ["Kisuke6"] = {["Mode"] = "Pair", ["Checks"] = {"attack", "range"}, ["Ability Type"] = "Multiple", ["Ability Name"] = "Buff Ability", ["Time"] = 13},
+        ["Rayleigh"] = {["Mode"] = "Box", ["Checks"] = {"attack"}, ["Ability Type"] = "Normal", ["Time"] = 13},
+        ["Homura7"] = {["Mode"] = "Cycle", ["Checks"] = {}, ["Ability Type"] = "Normal", ["Cycle Units"] = 4, ["Time"] = 10, ["Delay"] = 1},
+        ["Merlin6"] = {["Time"] = 13, ["Checks"] = {"attack", "range"}, ["Mode"] = "Box", ["Ability Type"] = "Normal"},
+        ["Gojo7"] = {["Time"] = 9.5, ["Checks"] = {""}, ["Mode"] = "Box", ["Delay"] = 0, ["Ability Type"] = "Normal"},
+        ["Metal Cooler"] = {["Time"] = 21, ["Checks"] = {""}, ["Mode"] = "Spam", ["Delay"] = 0.5, ["Ability Type"] = "Normal"},
+        ["Satorou Gojou"] = {["Time"] = 10, ["Checks"] = {""}, ["Mode"] = "Box", ["Delay"] = 0, ["Ability Type"] = "Normal"},
+        ["Welkin"] = {["Time"] = 15, ["Checks"] = {""}, ["Mode"] = "Spam", ["Delay"] = 0, ["Ability Type"] = "Normal"}
     },
     auto_vote_extreme = false,
     auto_2x = false,
@@ -287,7 +249,7 @@ local DefaultSettings = {
     macro_speedchange = true,
     macro_ability_blacklist = {
         "Erwin", "Merlin", "Brook6", "Kisuke6", "Rayleigh", "Merlin6", "Gojo7",
-        "Hoshino", "Metal Cooler"
+        "Hoshino", "Metal Cooler","Welkin","Homura7"
     },
     macro_timer_version = "Version 2",
     action_queue_remote_fire_delay = 0.25,
@@ -332,15 +294,13 @@ local DefaultSettings = {
 }
 
 if not pcall(function() readfile(SettingsFile) end) then
-    writefile(SettingsFile,
-              game:GetService("HttpService"):JSONEncode(DefaultSettings))
+    writefile(SettingsFile, game:GetService("HttpService"):JSONEncode(DefaultSettings))
 end
 
 if not pcall(function()
     Settings = game:GetService("HttpService"):JSONDecode(readfile(SettingsFile))
 end) then
-    writefile(SettingsFile,
-              game:GetService("HttpService"):JSONEncode(DefaultSettings))
+    writefile(SettingsFile, game:GetService("HttpService"):JSONEncode(DefaultSettings))
     Settings = DefaultSettings
 end
 
@@ -366,9 +326,7 @@ end
 
 for _, file in pairs(listfiles(folder_name)) do
     if not pcall(function()
-        local json_content = game:GetService("HttpService"):JSONDecode(readfile(
-                                                                           file))
-
+        local json_content = game:GetService("HttpService"):JSONDecode(readfile(file))
         for k, v in pairs(json_content) do
             if Macros[k] ~= nil then
                 delfile(file)
@@ -386,7 +344,6 @@ if TableLength(Macros) == 0 then
 end
 
 local MacroProfileList = {}
-
 for i, _ in pairs(Macros) do table.insert(MacroProfileList, i) end
 
 if Macros[Settings.macro_profile] == nil then
@@ -395,7 +352,6 @@ end
 
 function Save()
     writefile(SettingsFile, game:GetService("HttpService"):JSONEncode(Settings))
-
     for profile_name, macro_table in pairs(Macros) do
         local save_data = {}
         save_data[profile_name] = macro_table
@@ -413,6 +369,30 @@ Save()
 print("[KarmaPanda] Filesystem Loaded: " .. os.clock() - benchmark_time)
 benchmark_time = os.clock()
 
+-- Detect the server's saved story level; use it directly without an offset.
+local StoryLevelControl
+local function DetectStoryLevel()
+    local ok, result = pcall(function()
+        local remotes = game:GetService("ReplicatedStorage"):WaitForChild("Remotes", 10)
+        local server = remotes and remotes:WaitForChild("Server", 10)
+        if not server then error("Story data remote is unavailable") end
+        return server:InvokeServer("Data", "StoryLevel")
+    end)
+
+    local level = ok and tonumber(result) or nil
+    if not level or level ~= level or level == math.huge or level < 1 or level % 1 ~= 0 then
+        warn("[KarmaPanda] Could not detect a valid StoryLevel; keeping saved level. Result:", result)
+        return false
+    end
+
+    Settings.auto_join_story_level = level
+    Save()
+    if StoryLevelControl then StoryLevelControl:Set(level, true) end
+    print("[KarmaPanda] Detected and saved Story Level:", level)
+    return true
+end
+
+DetectStoryLevel()
 -- Game Helper Variables
 local Player = game.Players.LocalPlayer
 local GUI = Player.PlayerGui
@@ -420,12 +400,11 @@ local GUI = Player.PlayerGui
 -- Game Helper Functions
 local function get_world()
     local worlds = {
-        ["14657361824"] = -2, -- team event
-        ["5552815761"] = -1, -- time chamber
+        ["14657361824"] = -2,
+        ["5552815761"] = -1,
         ["11574204578"] = 0,
         ["4996049426"] = 1,
         ["7785334488"] = 2
-        -- ["11886211138"] = 3
     }
     return worlds[tostring(game.PlaceId)]
 end
@@ -436,8 +415,7 @@ end
 
 local function Delay(time, condition)
     local timeElapsed = 0
-    local updates = 0.1 -- 100 ms checks
-
+    local updates = 0.1
     while timeElapsed < time do
         if not condition then break end
         timeElapsed = timeElapsed + (updates * get_game_speed())
@@ -448,34 +426,28 @@ end
 local function get_units()
     local units = {}
     local T = game:GetService("Workspace").Unit:GetChildren()
-
     for k, v in pairs(T) do
-        if v:FindFirstChild("Owner") ~= nil and tostring(v.Owner.Value) ==
-            Player.Name then table.insert(units, v) end
+        if v:FindFirstChild("Owner") ~= nil and tostring(v.Owner.Value) == Player.Name then
+            table.insert(units, v)
+        end
     end
-
     return units
 end
 
 local CachedStats, OrbsV2Client, DataFolderClient
 
 if get_world() ~= -1 and get_world() ~= -2 then
-    CachedStats = require(Player.Backpack:WaitForChild("Framework")
-                              :WaitForChild("CachedStats"))
-    OrbsV2Client = require(game:GetService("ReplicatedStorage"):WaitForChild(
-                               "Framework"):WaitForChild("OrbsV2Client"))
-    DataFolderClient =
-        require(game.ReplicatedStorage.Framework.DataFolderClient)
+    CachedStats = require(Player.Backpack:WaitForChild("Framework"):WaitForChild("CachedStats"))
+    OrbsV2Client = require(game:GetService("ReplicatedStorage"):WaitForChild("Framework"):WaitForChild("OrbsV2Client"))
+    DataFolderClient = require(game.ReplicatedStorage.Framework.DataFolderClient)
 end
 
 local function get_all_storage_items()
     local items = {}
-
     if get_world() ~= -1 and get_world() ~= -2 then
         local storageItems = game:GetService("ReplicatedStorage").StorageItems
-
         for _, item in pairs(storageItems:GetChildren()) do
-            if item.Name ~= "Disc" then -- no package link smh
+            if item.Name ~= "Disc" then
                 table.insert(items, item.Name)
             end
         end
@@ -485,32 +457,26 @@ end
 
 local function get_all_units()
     local units = {}
-
     if get_world() ~= -1 and get_world() ~= -2 then
-        for k, v in pairs(
-                        game:GetService("ReplicatedStorage").Unit:GetChildren()) do
+        for k, v in pairs(game:GetService("ReplicatedStorage").Unit:GetChildren()) do
             if v.Name ~= "PackageLink" then
                 table.insert(units, v.Name)
             end
         end
     end
-
     return units
 end
 
 local function get_stat(unit_name) return CachedStats.getstat(unit_name) end
 
 local function get_unit_from_gui(unit_name)
-    local UnitGUI = GUI:FindFirstChild("HUD"):FindFirstChild("BottomFrame")
-                        :FindFirstChild("Unit")
-
+    local UnitGUI = GUI:FindFirstChild("HUD"):FindFirstChild("BottomFrame"):FindFirstChild("Unit")
     for _, v in pairs(UnitGUI:GetChildren()) do
         if v.ClassName == "Frame" then
             local u = v:FindFirstChild("Unit")
             if u.Value == unit_name then return v end
         end
     end
-
     return nil
 end
 
@@ -518,57 +484,41 @@ local function get_summon_cost(unit_name)
     local cost = get_stat(unit_name)["Cost"]
     local discount = 0
     local unit = get_unit_from_gui(unit_name)
-
     if unit == nil then
         local orb = OrbsV2Client.GetAssignedOrbForUnit(unit_name)
-
         if orb ~= nil then
             local orb_stats = CachedStats.getOrbStat(orb)
-
             if orb_stats ~= nil then
-                if orb_stats["InitialCost"] ~= nil then
-                    discount = orb_stats["InitialCost"]
-                end
-                if orb_stats["InitialPercentageCost"] ~= nil then
-                    cost = cost * orb_stats["InitialPercentageCost"]
-                end
+                if orb_stats["InitialCost"] ~= nil then discount = orb_stats["InitialCost"] end
+                if orb_stats["InitialPercentageCost"] ~= nil then cost = cost * orb_stats["InitialPercentageCost"] end
             end
         end
-
         return cost - discount
     else
         local image_label = unit:FindFirstChild("ImageLabel")
-
         if image_label ~= nil then
             local text_label = image_label:FindFirstChild("TextLabel")
-
             if text_label ~= nil then cost = convert(text_label.Text) end
         end
-
         return cost
     end
 end
 
 local function get_upgrade_cost(unit_name, level)
     local unit = get_stat(unit_name)
-
     if unit ~= nil then
         local upgrades = unit["Upgrade"]
-
         if upgrades[level] == nil then
             return 0
         else
             local cost = upgrades[level]["Cost"]
             local unit = get_unit_from_gui(unit_name)
-
             if unit ~= nil then
                 local id = unit:FindFirstChild("ID")
-
                 if id ~= nil then
                     local orb = OrbsV2Client.GetAssignedOrbForUnit(id.Value)
                     if orb ~= nil then
                         local orb_stats = CachedStats.getOrbStat(orb)
-
                         if orb_stats ~= nil then
                             if orb_stats["InitialPercentageCost"] ~= nil then
                                 cost = cost * orb_stats["InitialPercentageCost"]
@@ -577,11 +527,10 @@ local function get_upgrade_cost(unit_name, level)
                     end
                 end
             end
-
             return cost
         end
     else
-        return 0 -- cannot find unit with get_stat
+        return 0
     end
 end
 
@@ -592,53 +541,33 @@ end
 local function get_money() return Player:FindFirstChild("Money").Value end
 
 local function get_wave()
-    local WaveValue = game:GetService("ReplicatedStorage"):FindFirstChild(
-                          "WaveValue")
+    local WaveValue = game:GetService("ReplicatedStorage"):FindFirstChild("WaveValue")
     local wave = 0
     if WaveValue ~= nil then wave = WaveValue.Value end
     return wave
 end
 
 local function get_gems()
-    if DataFolderClient ~= nil then
-        return DataFolderClient.Get("Gems")
-    else
-        return nil
-    end
+    if DataFolderClient ~= nil then return DataFolderClient.Get("Gems") else return nil end
 end
 
 local function get_gold()
-    if DataFolderClient ~= nil then
-        return DataFolderClient.Get("Gold")
-    else
-        return nil
-    end
+    if DataFolderClient ~= nil then return DataFolderClient.Get("Gold") else return nil end
 end
 
 local function get_stardust()
-    if DataFolderClient ~= nil then
-        return DataFolderClient.Get("StardustStone")
-    else
-        return nil
-    end
+    if DataFolderClient ~= nil then return DataFolderClient.Get("StardustStone") else return nil end
 end
 
 local function get_level()
-    if DataFolderClient ~= nil then
-        return DataFolderClient.Get("Level")
-    else
-        return nil
-    end
+    if DataFolderClient ~= nil then return DataFolderClient.Get("Level") else return nil end
 end
 
 local function get_battle_pass_tier()
     local bp_tier = "nil"
-
     pcall(function()
-        bp_tier = GUI.TowerPassRewards.Main.Page.Main.Top.CurrentTierBox.Tier
-                      .Text
+        bp_tier = GUI.TowerPassRewards.Main.Page.Main.Top.CurrentTierBox.Tier.Text
     end)
-
     return bp_tier
 end
 
@@ -661,7 +590,6 @@ end
 local function get_game_status()
     local status = GUI.HUD:WaitForChild("MissionEnd"):WaitForChild("BG")
                        :WaitForChild("Status"):WaitForChild("Status")
-
     return status.Text
 end
 
@@ -678,15 +606,12 @@ local function CheckAttackBuff(Units)
         for _, v in pairs(Units) do
             local buffs = v:FindFirstChild("Head"):FindFirstChild("EffectBBGUI")
             if buffs ~= nil then
-                local attack_buff = buffs:FindFirstChild("Frame")
-                                        :FindFirstChild("AttackImage")
-
+                local attack_buff = buffs:FindFirstChild("Frame"):FindFirstChild("AttackImage")
                 if not attack_buff.Visible then return false end
             else
                 return false
             end
         end
-
         return true
     end)
 end
@@ -695,15 +620,12 @@ local function CheckRangeBuff(Units)
     for _, v in pairs(Units) do
         local buffs = v:FindFirstChild("Head"):FindFirstChild("EffectBBGUI")
         if buffs ~= nil then
-            local range_buff = buffs:FindFirstChild("Frame"):FindFirstChild(
-                                   "RangeImage")
-
+            local range_buff = buffs:FindFirstChild("Frame"):FindFirstChild("RangeImage")
             if not range_buff.Visible then return false end
         else
             return false
         end
     end
-
     return true
 end
 
@@ -711,12 +633,10 @@ local function CheckStun(unit)
     local buffs = unit:FindFirstChild("Head"):FindFirstChild("EffectBBGUI")
     if buffs ~= nil then
         local stun = buffs:FindFirstChild("Frame"):FindFirstChild("StunImage")
-
         if not stun.Visible then return false end
     else
         return false
     end
-
     return true
 end
 
@@ -735,7 +655,6 @@ local TimeOffset = 0
 
 local function ElapsedTime()
     local wave = get_wave()
-
     if wave > 0 then
         if Settings.macro_timer_version == "Version 1" then
             return getrenv()["time"]() + TimeOffset
@@ -743,108 +662,75 @@ local function ElapsedTime()
             return (getrenv()["time"]() - StartTime) + TimeOffset
         end
     end
-
     return 0
 end
 
 local function CalculateTimeOffset()
     task.spawn(function()
         repeat task.wait() until get_game_speed() ~= nil and get_wave() > 0
-
         StartTime = getrenv()["time"]()
-
         while true do
             if get_game_speed() > 1 then
                 TimeOffset = TimeOffset + ((get_game_speed() - 1) * 0.015)
             end
             task.wait(0.015)
-            -- print("Macro Calculated Time:", ElapsedTime())
-            -- print("Macro Calculated Time w/o Offset:", ElapsedTime() - TimeOffset)
         end
     end)
 end
 
 local function SendWebhook(fields)
     local status, error_message = pcall(function()
-        local request = request or http_request or (http and http.request) or
-                            syn.request
-
+        local request = request or http_request or (http and http.request) or syn.request
         local content = {}
-
         if Settings.webhook_user_name then
-            table.insert(content, {
-                ["name"] = "Username",
-                ["value"] = "||" .. Player.Name .. "||"
-            })
+            table.insert(content, {["name"] = "Username", ["value"] = "||" .. Player.Name .. "||"})
         end
-
         content = TableConcat(content, fields)
-
         local ping_message = ""
-
         if Settings.webhook_discord_id ~= "" and Settings.webhook_ping_user then
             ping_message = "<@" .. Settings.webhook_discord_id .. ">"
         end
-
         request({
             Url = Settings.webhook_url,
             Method = "POST",
             Headers = {["Content-Type"] = "application/json"},
             Body = game:GetService("HttpService"):JSONEncode({
                 ["content"] = ping_message,
-                ["embeds"] = {
-                    {
-                        ["author"] = {
-                            ["name"] = "KarmaPanda",
-                            ["url"] = "https://discord.gg/BrnQQGKbvE",
-                            ["icon_url"] = "https://avatars.githubusercontent.com/u/10904093?v=4"
-                        },
-                        ["title"] = "All Star Tower Defense",
-                        ["url"] = "https://www.roblox.com/games/4996049426/",
-                        ["type"] = "rich",
-                        ["color"] = tonumber(Settings.webhook_color, 16),
-                        ["fields"] = content
-                    }
-                }
+                ["embeds"] = {{
+                    ["author"] = {
+                        ["name"] = "KarmaPanda",
+                        ["url"] = "https://discord.gg/BrnQQGKbvE",
+                        ["icon_url"] = "https://avatars.githubusercontent.com/u/10904093?v=4"
+                    },
+                    ["title"] = "All Star Tower Defense",
+                    ["url"] = "https://www.roblox.com/games/4996049426/",
+                    ["type"] = "rich",
+                    ["color"] = tonumber(Settings.webhook_color, 16),
+                    ["fields"] = content
+                }}
             })
         })
     end)
-
     if not status then print("Webhook error:", error_message) end
 end
 
--- https://www.lua.org/pil/11.4.html
+-- Queue implementation
 Queue = {}
 function Queue.new() return {first = 0, last = -1} end
-function Queue.pushleft(list, value)
-    local first = list.first - 1
-    list.first = first
-    list[first] = value
-end
-function Queue.pushright(list, value)
-    local last = list.last + 1
-    list.last = last
-    list[last] = value
-end
+function Queue.pushleft(list, value) local first = list.first - 1; list.first = first; list[first] = value end
+function Queue.pushright(list, value) local last = list.last + 1; list.last = last; list[last] = value end
 function Queue.popleft(list)
     local first = list.first
     if first > list.last then error("list is empty") end
-    local value = list[first]
-    list[first] = nil -- to allow garbage collection
-    list.first = first + 1
-    return value
+    local value = list[first]; list[first] = nil; list.first = first + 1; return value
 end
 function Queue.popright(list)
     local last = list.last
     if list.first > last then error("list is empty") end
-    local value = list[last]
-    list[last] = nil -- to allow garbage collection
-    list.last = last - 1
-    return value
+    local value = list[last]; list[last] = nil; list.last = last - 1; return value
 end
 function Queue.length(list) return (list.last - list.first) + 1 end
 
--- Action Queue
 local Action_Queue = Queue.new()
 local Upgrade_Counter = 0
 
@@ -858,25 +744,19 @@ local function ActionQueueHelper()
             print("Current Action", remote_method)
             for k, v in pairs(remote_args) do print(k, v) end
             if tostring(remote_method) == "Input" then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack(remote_args))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(remote_args))
             end
             if tostring(remote_method) == "Server" then
-                game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer(
-                    unpack(remote_args))
+                game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer(unpack(remote_args))
             end
             task.wait(Settings.action_queue_remote_fire_delay)
-            if remote_args[1] == "Upgrade" then
-                Upgrade_Counter = Upgrade_Counter - 1
-            end
+            if remote_args[1] == "Upgrade" then Upgrade_Counter = Upgrade_Counter - 1 end
         end
     end
 end
 
 local function StartActionQueue()
     local success, error_message = pcall(ActionQueueHelper)
-
-    -- Rerun code if something breaks in the action queue.
     while not success do
         print("Error with action queue found: " .. error_message)
         success, error_message = pcall(ActionQueueHelper)
@@ -884,10 +764,8 @@ local function StartActionQueue()
     end
 end
 
--- Action Queue Functions
 local function AddToQueue(remote_method, remote_args)
-    Queue.pushright(Action_Queue,
-                    {["Method"] = remote_method, ["Args"] = remote_args})
+    Queue.pushright(Action_Queue, {["Method"] = remote_method, ["Args"] = remote_args})
 end
 
 local function SummonUnit(rotation, cframe, unit_name)
@@ -895,64 +773,39 @@ local function SummonUnit(rotation, cframe, unit_name)
         local function CheckUnitExist(unit)
             local owner = unit:FindFirstChild("Owner")
             local hrp = unit:FindFirstChild("HumanoidRootPart")
-
             if owner ~= nil and hrp ~= nil then
-                local magnitude =
-                    (cframe.Position - hrp.CFrame.Position).magnitude
-
-                if tostring(owner.Value) == Player.Name and unit.Name ==
-                    unit_name and magnitude <= Settings.macro_magnitude then
+                local magnitude = (cframe.Position - hrp.CFrame.Position).magnitude
+                if tostring(owner.Value) == Player.Name and unit.Name == unit_name and magnitude <= Settings.macro_magnitude then
                     return true
                 end
             end
-
             return false
         end
-
         if type(cframe) == "string" then cframe = StringToCFrame(cframe) end
-
         if Settings.macro_money_tracking then
             repeat task.wait() until get_money() >= get_summon_cost(unit_name)
         end
-
         local summoned = false
-        local connection = game:GetService("Workspace").Unit.ChildAdded:Connect(
-                               function(unit)
-                if CheckUnitExist(unit) then summoned = true end
-            end)
-
+        local connection = game:GetService("Workspace").Unit.ChildAdded:Connect(function(unit)
+            if CheckUnitExist(unit) then summoned = true end
+        end)
         AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input, {
             [1] = "Summon",
-            [2] = {
-                ["Rotation"] = rotation,
-                ["cframe"] = cframe,
-                ["Unit"] = unit_name
-            }
+            [2] = {["Rotation"] = rotation, ["cframe"] = cframe, ["Unit"] = unit_name}
         })
-
         if Settings.action_queue_remote_on_fail then
             task.spawn(function()
                 task.wait(Settings.action_queue_remote_on_fail_delay)
                 while not summoned do
                     if Queue.length(Action_Queue) == 0 then
-                        for _, unit in pairs(
-                                           game:GetService("Workspace").Unit:GetChildren()) do
-                            if CheckUnitExist(unit, cframe) then
-                                summoned = true
-                                break
-                            end
+                        for _, unit in pairs(game:GetService("Workspace").Unit:GetChildren()) do
+                            if CheckUnitExist(unit, cframe) then summoned = true; break end
                         end
                         if not summoned then
-                            AddToQueue(
-                                game:GetService("ReplicatedStorage").Remotes
-                                    .Input, {
-                                    [1] = "Summon",
-                                    [2] = {
-                                        ["Rotation"] = rotation,
-                                        ["cframe"] = cframe,
-                                        ["Unit"] = unit_name
-                                    }
-                                })
+                            AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input, {
+                                [1] = "Summon",
+                                [2] = {["Rotation"] = rotation, ["cframe"] = cframe, ["Unit"] = unit_name}
+                            })
                         end
                     end
                     task.wait(Settings.action_queue_remote_on_fail_delay_loop)
@@ -963,7 +816,6 @@ local function SummonUnit(rotation, cframe, unit_name)
             connection:Disconnect()
         end
     end)
-
     if not status then print("Error on Summon Unit: " .. err) end
 end
 
@@ -971,88 +823,43 @@ local function UpgradeUnit(unit, upgrade_level)
     local status, err = pcall(function()
         local unit_upgrade_level = unit:FindFirstChild("UpgradeTag")
         local unit_max_upgrade_level = get_max_upgrade_level(unit.Name)
-
         local function UnitIsUpgraded()
-            if unit_upgrade_level.Value >= upgrade_level or
-                unit_upgrade_level.Value >= unit_max_upgrade_level then
+            if unit_upgrade_level.Value >= upgrade_level or unit_upgrade_level.Value >= unit_max_upgrade_level then
                 return true
             else
                 return false
             end
         end
-
-        -- repeat task.wait() until Upgrade_Counter == 0
-
-        -- if Settings.macro_money_tracking then
         local total_upgrade_cost = 0
-        local total_upgrade_levels = upgrade_level - unit_upgrade_level.Value
-
         for i = unit_upgrade_level.Value + 1, upgrade_level do
-            total_upgrade_cost = total_upgrade_cost +
-                                     get_upgrade_cost(unit.Name, i)
+            total_upgrade_cost = total_upgrade_cost + get_upgrade_cost(unit.Name, i)
         end
-
         repeat
             task.wait()
-            print(string.format(
-                      "Macro money tracking, current money %s. Upgrade cost %s.",
-                      get_money(), total_upgrade_cost))
+            print(string.format("Macro money tracking, current money %s. Upgrade cost %s.", get_money(), total_upgrade_cost))
             if UnitIsUpgraded() then return end
         until get_money() >= total_upgrade_cost
-        -- end
-
         local upgraded = false
-
-        local connection = unit_upgrade_level:GetPropertyChangedSignal("Value")
-                               :Connect(function()
-                if UnitIsUpgraded() then upgraded = true end
-            end)
-
+        local connection = unit_upgrade_level:GetPropertyChangedSignal("Value"):Connect(function()
+            if UnitIsUpgraded() then upgraded = true end
+        end)
         for i = unit_upgrade_level.Value + 1, upgrade_level do
-            -- Upgrade_Counter = Upgrade_Counter + 1
-            game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer(
-                "Upgrade", unit)
-            -- AddToQueue(game:GetService("ReplicatedStorage").Remotes.Server, {[1] = "Upgrade", [2] = unit})
+            game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer("Upgrade", unit)
         end
-
         task.spawn(function()
             task.wait(1)
             while not upgraded do
                 if Queue.length(Action_Queue) == 0 then
                     if UnitIsUpgraded() then break end
                     if not upgraded then
-                        -- Upgrade_Counter = Upgrade_Counter + 1
-                        game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer(
-                            "Upgrade", unit)
+                        game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer("Upgrade", unit)
                     end
                 end
                 task.wait(1)
             end
             connection:Disconnect()
         end)
-
-        --[[if Settings.action_queue_remote_on_fail then
-            task.spawn(function()
-                task.wait(Settings.action_queue_remote_on_fail_delay)
-                while not upgraded do
-                    if Queue.length(Action_Queue) == 0 then
-                        if UnitIsUpgraded() then break end
-                        if not upgraded then
-                            Upgrade_Counter = Upgrade_Counter + 1
-                            AddToQueue(
-                                game:GetService("ReplicatedStorage").Remotes
-                                    .Server, {[1] = "Upgrade", [2] = unit})
-                        end
-                    end
-                    task.wait(Settings.action_queue_remote_on_fail_delay_loop)
-                end
-                connection:Disconnect()
-            end)
-        else
-            connection:Disconnect()
-        end]] --
     end)
-
     if not status then print("Error on Upgrade Unit: " .. err) end
 end
 
@@ -1060,45 +867,28 @@ local function UseAbilityUnit(unit, ability_string)
     task.spawn(function()
         local status, err = pcall(function()
             local special_move = unit:FindFirstChild("SpecialMove")
-            local special_move_enabled =
-                special_move:FindFirstChild("Special_Enabled2")
-
-            repeat task.wait() until not CheckStun(unit) and
-                not special_move_enabled.Value
-
+            local special_move_enabled = special_move:FindFirstChild("Special_Enabled2")
+            repeat task.wait() until not CheckStun(unit) and not special_move_enabled.Value
             local ability_used = false
-            local connection = special_move_enabled:GetPropertyChangedSignal(
-                                   "Value")
-                                   :Connect(function()
-                    ability_used = true
-                end)
-
+            local connection = special_move_enabled:GetPropertyChangedSignal("Value"):Connect(function()
+                ability_used = true
+            end)
             AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input, {
-                [1] = "UseSpecialMove",
-                [2] = unit,
-                [3] = ability_string
+                [1] = "UseSpecialMove", [2] = unit, [3] = ability_string
             })
-
             if Settings.action_queue_remote_on_fail then
                 task.spawn(function()
                     task.wait(Settings.action_queue_remote_on_fail_delay)
                     while not ability_used do
                         if Queue.length(Action_Queue) == 0 then
-                            if special_move_enabled.Value then
-                                break
-                            end
+                            if special_move_enabled.Value then break end
                             if not ability_used then
-                                AddToQueue(
-                                    game:GetService("ReplicatedStorage").Remotes
-                                        .Input, {
-                                        [1] = "UseSpecialMove",
-                                        [2] = unit,
-                                        [3] = ability_string
-                                    })
+                                AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input, {
+                                    [1] = "UseSpecialMove", [2] = unit, [3] = ability_string
+                                })
                             end
                         end
-                        task.wait(
-                            Settings.action_queue_remote_on_fail_delay_loop)
+                        task.wait(Settings.action_queue_remote_on_fail_delay_loop)
                     end
                     connection:Disconnect()
                 end)
@@ -1106,7 +896,6 @@ local function UseAbilityUnit(unit, ability_string)
                 connection:Disconnect()
             end
         end)
-
         if not status then print("Error on Use Unit Ability: " .. err) end
     end)
 end
@@ -1117,10 +906,7 @@ local function UseMultipleAbilitiesGUI(ability_name)
         for k, v in pairs(gui:WaitForChild("Frame"):GetChildren()) do
             if v.Name == "ImageButton" then
                 local text = v:WaitForChild("TextLabel")
-                if text.Text == ability_name then
-                    firesignal(v.Activated)
-                    break
-                end
+                if text.Text == ability_name then firesignal(v.Activated); break end
             end
         end
     end)
@@ -1129,19 +915,12 @@ end
 local function UseKilluaWishesGUI(ability_name)
     task.spawn(function()
         local gui = GUI:WaitForChild("KilluaWishes")
-        local Options = gui:WaitForChild("TextBackground"):WaitForChild(
-                            "OptionsContainer")
+        local Options = gui:WaitForChild("TextBackground"):WaitForChild("OptionsContainer")
         for k, v in pairs(Options:GetChildren()) do
             if v.Name == "Option" then
                 if v.Text == ability_name then
                     print("Attempting to activate!")
-                    for k, v in pairs(getconnections(v)) do
-                        print(k, v)
-                    end
-                    -- TODO: Fix firesignal MouseButton1Click
-                    pcall(function()
-                        firesignal(v.MouseButton1Click)
-                    end)
+                    pcall(function() firesignal(v.MouseButton1Click) end)
                     gui:Destroy()
                     break
                 end
@@ -1151,7 +930,6 @@ local function UseKilluaWishesGUI(ability_name)
 end
 
 local function UseMultipleAbilitiesUnit(unit, ability_string, ability_name)
-    -- TODO: Add check to make sure that unit is leveled for ability
     UseAbilityUnit(unit, ability_string)
     UseMultipleAbilitiesGUI(ability_name)
 end
@@ -1174,13 +952,9 @@ end
 
 local function SkipWave(wave)
     task.spawn(function()
-        -- TODO: Use FindFirstChild etc
         repeat task.wait() until GUI.HUD.NextWaveVote.Visible
-
-        -- TODO: Add remote refiring
         while get_wave() == wave and GUI.HUD.NextWaveVote.Visible do
-            AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input,
-                       {[1] = "VoteWaveConfirm"})
+            AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input, {[1] = "VoteWaveConfirm"})
             task.wait(1)
         end
     end)
@@ -1189,91 +963,59 @@ end
 local function AutoSkipWaveToggle(wave, status)
     task.spawn(function()
         repeat task.wait() until get_wave() >= wave
-
         local CategoryName = GUI:WaitForChild("HUD"):WaitForChild("Setting")
                                  :WaitForChild("Page"):WaitForChild("Main")
-                                 :WaitForChild("Scroll"):WaitForChild(
-                                     "SettingV2"):WaitForChild("AutoSkip")
-                                 :WaitForChild("Options"):WaitForChild("Toggle")
-                                 :WaitForChild("CategoryName")
-
+                                 :WaitForChild("Scroll"):WaitForChild("SettingV2")
+                                 :WaitForChild("AutoSkip"):WaitForChild("Options")
+                                 :WaitForChild("Toggle"):WaitForChild("CategoryName")
         if CategoryName.Text ~= status then
-            AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input,
-                       {[1] = "AutoSkipWaves_CHANGE"})
+            AddToQueue(game:GetService("ReplicatedStorage").Remotes.Input, {[1] = "AutoSkipWaves_CHANGE"})
         end
     end)
 end
 
 local record_connections = {}
 
--- TODO: pcall this
 local function GetUnitIndex(unit)
     if Macros[Settings.macro_profile]["Units"][unit.Name] == nil then
         Macros[Settings.macro_profile]["Units"][unit.Name] = {}
     end
-
     local index = nil
     local exists = false
-
     for i, v in ipairs(Macros[Settings.macro_profile]["Units"][unit.Name]) do
         local hrp = unit:WaitForChild("HumanoidRootPart", 1)
-
         if hrp ~= nil then
-            local magnitude = (StringToCFrame(v["Position"]).Position -
-                                  hrp.CFrame.Position).magnitude
-
+            local magnitude = (StringToCFrame(v["Position"]).Position - hrp.CFrame.Position).magnitude
             if magnitude <= Settings.macro_magnitude then
-                exists = true
-                index = i
-                break
+                exists = true; index = i; break
             end
         end
     end
-
     if index == nil then
-        -- TODO: Find new rotation variable if needed.
         local rotation = 0
-
-        --[[if getrenv()["_G"] ~= nil then
-            rotation = getrenv()["_G"].RotateUnitPlacementValue
-        end
-
-        if rotation == nil then rotation = 0 end]] --
-
         table.insert(Macros[Settings.macro_profile]["Units"][unit.Name], {
             ["Rotation"] = rotation,
             ["Position"] = tostring(unit.HumanoidRootPart.CFrame)
         })
         index = #Macros[Settings.macro_profile]["Units"][unit.Name]
     end
-
     return index
 end
 
--- TODO: pcall this
 local function GetUnitByTargetInfo(Target)
     local unit_name = Target["Name"]
     local index = Target["Index"]
-
     local unit_info = Macros[Settings.macro_profile]["Units"][unit_name][index]
-    local rotation = unit_info["Rotation"] -- only used for summons
-    local cframe = StringToCFrame(unit_info["Position"]) -- used for identifying unit
-
+    local rotation = unit_info["Rotation"]
+    local cframe = StringToCFrame(unit_info["Position"])
     local unit = nil
-
     for _, v in pairs(game:GetService("Workspace").Unit:GetChildren()) do
         local hrp = v:WaitForChild("HumanoidRootPart", 1)
-
         if hrp ~= nil then
             local magnitude = (cframe.Position - hrp.CFrame.Position).magnitude
-
-            if magnitude <= Settings.macro_magnitude then
-                unit = v
-                break
-            end
+            if magnitude <= Settings.macro_magnitude then unit = v; break end
         end
     end
-
     return unit, cframe, rotation
 end
 
@@ -1295,19 +1037,17 @@ end
 
 local function HookUpgrade(unit, index)
     local upgrade_level = unit:WaitForChild("UpgradeTag", 60)
-
     if upgrade_level ~= nil then
-        return upgrade_level:GetPropertyChangedSignal("Value"):Connect(
-                   function()
-                if Settings.macro_record and Settings.macro_upgrade then
-                    InsertToMacro({
-                        ["Time"] = MacroRecordElapsedTime(),
-                        ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
-                        ["Remote"] = {[1] = "Upgrade", [2] = "Target"},
-                        ["Parameter"] = {["Level"] = upgrade_level.Value}
-                    })
-                end
-            end)
+        return upgrade_level:GetPropertyChangedSignal("Value"):Connect(function()
+            if Settings.macro_record and Settings.macro_upgrade then
+                InsertToMacro({
+                    ["Time"] = MacroRecordElapsedTime(),
+                    ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
+                    ["Remote"] = {[1] = "Upgrade", [2] = "Target"},
+                    ["Parameter"] = {["Level"] = upgrade_level.Value}
+                })
+            end
+        end)
     else
         return nil
     end
@@ -1315,121 +1055,64 @@ end
 
 local function HookAbility(unit, index)
     local special_move = unit:WaitForChild("SpecialMove", 15)
-
     if special_move ~= nil then
         local ability_2 = special_move:WaitForChild("Special_Enabled2", 15)
-
         if ability_2 == nil then return nil end
-
         local ability_1 = special_move:WaitForChild("Special_Enabled", 1)
         local ability_string = ""
-
         if ability_1 ~= nil then
-            local special_enabled_string =
-                ability_1:WaitForChild("Special_Enabled_String", 1)
-
-            if special_enabled_string ~= nil then
-                ability_string = special_enabled_string.Value
-            end
+            local special_enabled_string = ability_1:WaitForChild("Special_Enabled_String", 1)
+            if special_enabled_string ~= nil then ability_string = special_enabled_string.Value end
         end
-
         return ability_2.ChildAdded:Connect(function(c)
             local status, err = pcall(function()
                 if special_move:GetAttribute("Auto") then return end
-
                 if Settings.macro_record and Settings.macro_ability and
-                    table.find(Settings.macro_ability_blacklist, unit.Name) ==
-                    nil then
+                    table.find(Settings.macro_ability_blacklist, unit.Name) == nil then
                     if c.Name == "SpecialStart" then
                         InsertToMacro({
                             ["Time"] = MacroRecordElapsedTime(),
-                            ["Target"] = {
-                                ["Name"] = unit.Name,
-                                ["Index"] = index
-                            },
-                            ["Remote"] = {
-                                [1] = "UseSpecialMove",
-                                [2] = "Target",
-                                [3] = ability_string
-                            }
+                            ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
+                            ["Remote"] = {[1] = "UseSpecialMove", [2] = "Target", [3] = ability_string}
                         })
                     end
                 end
             end)
-
-            if not status then
-                print("Error on use ability hook: " .. err)
-            end
+            if not status then print("Error on use ability hook: " .. err) end
         end)
     end
-
     return nil
 end
 
 local function HookAutoAbility(unit, index)
     local special_move = unit:WaitForChild("SpecialMove", 15)
-
     if special_move ~= nil then
         local special_enabled = special_move:WaitForChild("Special_Enabled", 1)
         local ability_string = ""
-
         if special_enabled ~= nil then
-            local special_enabled_string =
-                special_enabled:WaitForChild("Special_Enabled_String", 1)
-
-            if special_enabled_string ~= nil then
-                ability_string = special_enabled_string.Value
-            end
+            local special_enabled_string = special_enabled:WaitForChild("Special_Enabled_String", 1)
+            if special_enabled_string ~= nil then ability_string = special_enabled_string.Value end
         end
-
         return special_move:GetAttributeChangedSignal("Auto"):Connect(function()
             if Settings.macro_record and Settings.macro_auto_ability then
                 InsertToMacro({
                     ["Time"] = MacroRecordElapsedTime(),
                     ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
-                    ["Remote"] = {
-                        [1] = "AutoToggle",
-                        [2] = "Target",
-                        [3] = special_move:GetAttribute("Auto")
-                    },
+                    ["Remote"] = {[1] = "AutoToggle", [2] = "Target", [3] = special_move:GetAttribute("Auto")},
                     ["Parameter"] = {["Ability String"] = ability_string}
                 })
             end
         end)
     end
-
     return nil
 end
 
---[[local function HookPriority(unit, index)
-    local priority = unit:WaitForChild("PriorityAttack", 60)
-
-    if priority ~= nil then
-        return priority:GetPropertyChangedSignal("Value"):Connect(function()
-            if Settings.macro_record and Settings.macro_priority then
-                InsertToMacro({
-                    ["Time"] = MacroRecordElapsedTime(),
-                    ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
-                    ["Remote"] = {[1] = "ChangePriority", [2] = "Target"},
-                    ["Parameter"] = {["Priority"] = priority.Value}
-                })
-            end
-        end)
-    end
-
-    return nil
-end]] --
-
 local function HookNextWave()
     local HUD = GUI:WaitForChild("HUD", 15)
-
     if HUD ~= nil then
         local next_wave_gui = HUD:WaitForChild("NextWaveVote", 15)
-
         if next_wave_gui == nil then return nil end
-
         local yes_button = next_wave_gui:WaitForChild("YesButton", 15)
-
         if yes_button ~= nil then
             return yes_button.MouseButton1Click:Connect(function()
                 if Settings.macro_record and Settings.macro_skipwave then
@@ -1442,28 +1125,22 @@ local function HookNextWave()
             end)
         end
     end
-
     return nil
 end
 
 local function HookAutoSkipWave()
-    local Toggle = GUI:WaitForChild("HUD"):WaitForChild("Setting"):WaitForChild(
-                       "Page"):WaitForChild("Main"):WaitForChild("Scroll")
-                       :WaitForChild("SettingV2"):WaitForChild("AutoSkip")
-                       :WaitForChild("Options"):WaitForChild("Toggle")
+    local Toggle = GUI:WaitForChild("HUD"):WaitForChild("Setting"):WaitForChild("Page")
+                       :WaitForChild("Main"):WaitForChild("Scroll"):WaitForChild("SettingV2")
+                       :WaitForChild("AutoSkip"):WaitForChild("Options"):WaitForChild("Toggle")
     local CategoryName = Toggle:WaitForChild("CategoryName")
     local Button = Toggle:WaitForChild("TextButton")
-
     if Button ~= nil then
         return Button.MouseButton1Click:Connect(function()
             if Settings.macro_record and Settings.macro_autoskipwave then
                 InsertToMacro({
                     ["Time"] = MacroRecordElapsedTime(),
                     ["Remote"] = {[1] = "AutoSkipWaves_CHANGE"},
-                    ["Parameter"] = {
-                        ["Wave"] = get_wave(),
-                        ["Status"] = CategoryName.Text
-                    }
+                    ["Parameter"] = {["Wave"] = get_wave(), ["Status"] = CategoryName.Text}
                 })
             end
         end)
@@ -1476,9 +1153,7 @@ local function HookMultipleAbilitiesGUI()
     local function Hook(c)
         if c.Name == "MultipleAbilities" then
             local Frame = c:WaitForChild("Frame")
-
             repeat task.wait() until #Frame:GetChildren() > 1
-
             for k, v in pairs(Frame:GetChildren()) do
                 if v.Name == "ImageButton" then
                     local connection = v.MouseButton1Click:Connect(function()
@@ -1495,8 +1170,7 @@ local function HookMultipleAbilitiesGUI()
             end
         end
         if c.Name == "KilluaWishes" then
-            local Options = c:WaitForChild("TextBackground"):WaitForChild(
-                                "OptionsContainer")
+            local Options = c:WaitForChild("TextBackground"):WaitForChild("OptionsContainer")
             for k, v in pairs(Options:GetChildren()) do
                 if v.Name == "Option" then
                     local connection = v.MouseButton1Click:Connect(function()
@@ -1512,100 +1186,65 @@ local function HookMultipleAbilitiesGUI()
             end
         end
     end
-
-    for _, v in pairs(GUI:GetChildren()) do
-        Hook(v) -- ensures all previous multiple abilities guis are found
-    end
-
+    for _, v in pairs(GUI:GetChildren()) do Hook(v) end
     return GUI.ChildAdded:Connect(function(c) Hook(c) end)
 end
 
 local function HookSpeedChanges()
-    return
-        game:GetService("ReplicatedStorage"):WaitForChild("SpeedUP").Changed:Connect(
-            function(v)
-                if Settings.macro_record and Settings.macro_speedchange then
-                    InsertToMacro({
-                        ["Time"] = MacroRecordElapsedTime(),
-                        ["Remote"] = {[1] = "SpeedChange"},
-                        ["Parameter"] = {["Speed"] = v}
-                    })
-                end
-            end)
+    return game:GetService("ReplicatedStorage"):WaitForChild("SpeedUP").Changed:Connect(function(v)
+        if Settings.macro_record and Settings.macro_speedchange then
+            InsertToMacro({
+                ["Time"] = MacroRecordElapsedTime(),
+                ["Remote"] = {[1] = "SpeedChange"},
+                ["Parameter"] = {["Speed"] = v}
+            })
+        end
+    end)
 end
 
 local function AddHooks(unit, index)
-    -- TODO: Print error message if one of the hooks are nil.
     table.insert(record_connections, HookUpgrade(unit, index))
     table.insert(record_connections, HookAbility(unit, index))
     table.insert(record_connections, HookAutoAbility(unit, index))
-    -- table.insert(record_connections, HookPriority(unit, index))
 end
 
--- Temporary fix for priority recording
+-- Priority hook via metatable
 local game_metatable = getrawmetatable(game)
 local namecall_original = game_metatable.__namecall
-
 setreadonly(game_metatable, false)
-
 game_metatable.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
-    local script = getcallingscript()
-
     local Args = {...}
-
     if Settings.macro_record and Settings.macro_priority then
-        if Args ~= nil and #Args > 1 and
-            (method == "FireServer" or method == "InvokeServer") then
+        if Args ~= nil and #Args > 1 and (method == "FireServer" or method == "InvokeServer") then
             if Args[1] == "ChangePriority" then
                 task.spawn(function()
                     InsertToMacro({
                         ["Time"] = MacroRecordElapsedTime(),
-                        ["Target"] = {
-                            ["Name"] = Args[2].Name,
-                            ["Index"] = GetUnitIndex(Args[2])
-                        },
+                        ["Target"] = {["Name"] = Args[2].Name, ["Index"] = GetUnitIndex(Args[2])},
                         ["Remote"] = {[1] = "ChangePriority", [2] = "Target"}
-                        -- ["Parameter"] = {["Priority"] = nil}
                     })
                 end)
             end
         end
     end
-
     return namecall_original(self, ...)
 end)
 
 function StartMacroRecord()
-    if Macros[Settings.macro_profile]["Macro"] == nil then
-        Macros[Settings.macro_profile]["Macro"] = {}
-    end
-
-    if Macros[Settings.macro_profile]["Settings"] == nil then
-        Macros[Settings.macro_profile]["Settings"] = {}
-    end
-
-    if Macros[Settings.macro_profile]["Map"] == nil then
-        Macros[Settings.macro_profile]["Map"] = {}
-    end
-
-    if Macros[Settings.macro_profile]["Units"] == nil then
-        Macros[Settings.macro_profile]["Units"] = {}
-    end
-
+    if Macros[Settings.macro_profile]["Macro"] == nil then Macros[Settings.macro_profile]["Macro"] = {} end
+    if Macros[Settings.macro_profile]["Settings"] == nil then Macros[Settings.macro_profile]["Settings"] = {} end
+    if Macros[Settings.macro_profile]["Map"] == nil then Macros[Settings.macro_profile]["Map"] = {} end
+    if Macros[Settings.macro_profile]["Units"] == nil then Macros[Settings.macro_profile]["Units"] = {} end
     if is_lobby() then return end
-
     local Units = game:GetService("Workspace"):WaitForChild("Unit")
     for _, unit in pairs(get_units()) do AddHooks(unit, GetUnitIndex(unit)) end
     print("Hooked Units In Workspace...")
-
     task.spawn(function()
         table.insert(record_connections, Units.ChildAdded:Connect(function(unit)
             local owner = unit:WaitForChild("Owner")
-
             if tostring(owner.Value) == Player.Name then
                 local index = GetUnitIndex(unit)
-
                 if Settings.macro_record and Settings.macro_summon then
                     InsertToMacro({
                         ["Time"] = MacroRecordElapsedTime(),
@@ -1613,99 +1252,55 @@ function StartMacroRecord()
                         ["Remote"] = {[1] = "Summon", [2] = "Target"}
                     })
                 end
-
                 AddHooks(unit, index)
             end
         end))
         print("Hooked Unit Summoning...")
     end)
-
     task.spawn(function()
-        table.insert(record_connections,
-                     Units.ChildRemoved:Connect(function(unit)
+        table.insert(record_connections, Units.ChildRemoved:Connect(function(unit)
             if Settings.macro_record and Settings.macro_sell then
                 local owner = unit:WaitForChild("Owner")
-
                 if tostring(owner.Value) == Player.Name then
                     local index = GetUnitIndex(unit)
-
                     InsertToMacro({
                         ["Time"] = MacroRecordElapsedTime(),
                         ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
                         ["Remote"] = {[1] = "Sell", [2] = "Target"}
                     })
-
                     Save()
                 end
             end
         end))
         print("Hooked Units Selling...")
     end)
-
-    task.spawn(function()
-        table.insert(record_connections, HookNextWave())
-        print("Hooked Next Wave...")
-    end)
-
-    task.spawn(function()
-        table.insert(record_connections, HookMultipleAbilitiesGUI())
-        print("Hooked Multiple Abilities GUI...")
-    end)
-
-    task.spawn(function()
-        table.insert(record_connections, HookAutoSkipWave())
-        print("Hooked Auto Skip Wave...")
-    end)
-
-    task.spawn(function()
-        table.insert(record_connections, HookSpeedChanges())
-        print("Hooked Speed Changes...")
-    end)
-
-    Rayfield:Notify({
-        Title = "Macro Recording",
-        Content = "Started Macro Recording...",
-        Duration = 6.5,
-        Image = 4483362458
-    })
+    task.spawn(function() table.insert(record_connections, HookNextWave()); print("Hooked Next Wave...") end)
+    task.spawn(function() table.insert(record_connections, HookMultipleAbilitiesGUI()); print("Hooked Multiple Abilities GUI...") end)
+    task.spawn(function() table.insert(record_connections, HookAutoSkipWave()); print("Hooked Auto Skip Wave...") end)
+    task.spawn(function() table.insert(record_connections, HookSpeedChanges()); print("Hooked Speed Changes...") end)
+    Library:Notify({Title = "Macro Recording", Text = "Started Macro Recording...", Duration = 6.5, Icon = "info"})
 end
 
 function StopMacroRecord()
     for _, v in pairs(record_connections) do v:Disconnect() end
     record_connections = {}
-    Rayfield:Notify({
-        Title = "Macro Recording",
-        Content = "Stopped Macro Recording...",
-        Duration = 6.5,
-        Image = 4483362458
-    })
+    Library:Notify({Title = "Macro Recording", Text = "Stopped Macro Recording...", Duration = 6.5, Icon = "info"})
 end
 
 function StartMacroPlayback()
     if is_lobby() then return end
-
-    table.sort(Macros[Settings.macro_profile]["Macro"],
-               function(a, b) return a["Time"] < b["Time"] end)
-
+    table.sort(Macros[Settings.macro_profile]["Macro"], function(a, b) return a["Time"] < b["Time"] end)
     CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
-
     while CurrentStep do
         local Current = Macros[Settings.macro_profile]["Macro"][CurrentStep]
-
-        repeat task.wait() until ElapsedTime() +
-            Settings.macro_playback_time_offset >= Current["Time"] or
-            not Settings.macro_playback
-
+        repeat task.wait() until ElapsedTime() + Settings.macro_playback_time_offset >= Current["Time"] or not Settings.macro_playback
         if not Settings.macro_playback then break end
-
         local Remote = Current["Remote"]
-
         if Current["Target"] == nil then
             if Remote[1] == "VoteWaveConfirm" then
                 SkipWave(Current["Parameter"]["Wave"])
             elseif Remote[1] == "AutoSkipWaves_CHANGE" then
-                AutoSkipWaveToggle(Current["Parameter"]["Wave"],
-                                   Current["Parameter"]["Status"])
+                AutoSkipWaveToggle(Current["Parameter"]["Wave"], Current["Parameter"]["Status"])
             elseif Remote[1] == "MultipleAbilities" then
                 UseMultipleAbilitiesGUI(Current["Parameter"]["Ability Name"])
             elseif Remote[1] == "KilluaWishes" then
@@ -1713,14 +1308,10 @@ function StartMacroPlayback()
             elseif Remote[1] == "SpeedChange" then
                 ChangeSpeed(Current["Parameter"]["Speed"])
             else
-                print(string.format(
-                          "Macro error! Invalid target found for remote %s at step %s",
-                          Remote[1], CurrentStep))
+                print(string.format("Macro error! Invalid target found for remote %s at step %s", Remote[1], CurrentStep))
             end
         else
-            local unit, position, rotation =
-                GetUnitByTargetInfo(Current["Target"])
-
+            local unit, position, rotation = GetUnitByTargetInfo(Current["Target"])
             if unit == nil and position and rotation then
                 if Remote[1] == "Summon" and Settings.macro_summon then
                     SummonUnit(rotation, position, Current["Target"]["Name"])
@@ -1728,55 +1319,36 @@ function StartMacroPlayback()
                     local attempts = 0
                     repeat
                         task.wait(Settings.macro_playback_search_delay)
-                        unit, position, rotation =
-                            GetUnitByTargetInfo(Current["Target"])
-                        print(string.format(
-                                  "Macro is attempting to find the unit for %s. Increase magnitude if this continues to occur or check if unit is being summoned.",
-                                  Remote[1]))
+                        unit, position, rotation = GetUnitByTargetInfo(Current["Target"])
+                        print(string.format("Macro is attempting to find the unit for %s.", Remote[1]))
                         attempts = attempts + 1
-                    until unit ~= nil or attempts >=
-                        Settings.macro_playback_search_attempts or
-                        not Settings.macro_playback
-
+                    until unit ~= nil or attempts >= Settings.macro_playback_search_attempts or not Settings.macro_playback
                     if attempts >= Settings.macro_playback_search_attempts then
-                        print(string.format(
-                                  "Macro skipped step %s for action %s, target %s, time %s. Please check if unit is being summoned correctly, or if it is a issue with macro playback.",
-                                  CurrentStep, Remote[1],
-                                  Current["Target"]["Name"], Current["Time"]))
+                        print(string.format("Macro skipped step %s for action %s, target %s, time %s.", CurrentStep, Remote[1], Current["Target"]["Name"], Current["Time"]))
                     end
                 end
             end
-
             if unit ~= nil then
                 if Remote[1] == "Upgrade" and Settings.macro_upgrade then
                     UpgradeUnit(unit, Current["Parameter"]["Level"])
-                elseif Remote[1] == "UseSpecialMove" and Settings.macro_ability and
-                    table.find(Settings.macro_ability_blacklist, unit.Name) ==
-                    nil then
+                elseif Remote[1] == "UseSpecialMove" and Settings.macro_ability and table.find(Settings.macro_ability_blacklist, unit.Name) == nil then
                     UseAbilityUnit(unit, Remote[3])
                 elseif Remote[1] == "AutoToggle" and Settings.macro_auto_ability then
-                    ActivateAutoAbilityUnit(unit,
-                                            Current["Parameter"]["Ability String"],
-                                            Remote[3])
+                    ActivateAutoAbilityUnit(unit, Current["Parameter"]["Ability String"], Remote[3])
                 elseif Remote[1] == "ChangePriority" and Settings.macro_priority then
                     ChangePriorityUnit(unit)
                 elseif Remote[1] == "Sell" and Settings.macro_sell then
                     SellUnit(unit)
                 elseif Remote[1] == "Summon" then
-                    print(
-                        "Macro attempting to summon a unit that already exists!")
+                    print("Macro attempting to summon a unit that already exists!")
                 else
                     print("Macro error! Remote %s is not a valid for ASTD.")
                 end
             elseif unit ~= nil and Remote[1] ~= "Summon" then
-                print(string.format(
-                          "Macro error! Cannot find unit for remote %s at step %s",
-                          Remote[1], CurrentStep))
+                print(string.format("Macro error! Cannot find unit for remote %s at step %s", Remote[1], CurrentStep))
             end
         end
-
-        CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"],
-                              CurrentStep)
+        CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
         task.wait()
     end
 end
@@ -1785,91 +1357,46 @@ function StopMacroPlayback() if is_lobby() then return end end
 
 function AutoVoteExtreme()
     repeat task.wait() until GUI.HUD.ModeVoteFrame.Visible
-
     repeat
-        game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({
-            [1] = "VoteGameMode",
-            [2] = "Extreme"
-        }))
+        game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = "VoteGameMode", [2] = "Extreme"}))
         task.wait(1)
     until not GUI.HUD.ModeVoteFrame.Visible
 end
 
 function AutoBattle()
     repeat task.wait() until GUI.HUD.FastForward.Autoplay.Visible
-
     if get_gems() < Settings.auto_battle_gems then
         Settings.auto_battle = false
-        Rayfield:Notify({
-            Title = "You have no gems to run Auto Battle!",
-            Content = "Auto battle paused until you have more gems!",
-            Duration = 6.5,
-            Image = 4483362458,
-            Actions = {Ignore = {Name = "Okay!", Callback = function() end}}
-        })
+        Library:Notify({Title = "You have no gems to run Auto Battle!", Text = "Auto battle paused until you have more gems!", Duration = 6.5, Icon = "info"})
         return
     end
-
-    local function pressKey(keyCode)
-        game:GetService("VirtualInputManager"):SendKeyEvent(true, keyCode,
-                                                            false, game)
-        task.wait(0.1)
-        game:GetService("VirtualInputManager"):SendKeyEvent(false, keyCode,
-                                                            false, game)
-    end
-
-    if GUI.HUD.FastForward.Autoplay.Visible and
-        not GUI.HUD.ModeVoteFrame.Visible then
-        pressKey(Enum.KeyCode.BackSlash)
-        task.wait(0.5)
-        pressKey(Enum.KeyCode.Right)
-        task.wait(0.5)
-        pressKey(Enum.KeyCode.Return)
-        task.wait(0.5)
-        pressKey(Enum.KeyCode.BackSlash)
-    end
-
-    repeat task.wait() until GUI.Notification:WaitForChild("Message").Visible or
-        CompareColor3(GUI.HUD.FastForward.Autoplay.BackgroundColor3,
-                      Color3.fromRGB(10, 230, 0))
-
-    if not CompareColor3(GUI.HUD.FastForward.Autoplay.BackgroundColor3,
-                         Color3.fromRGB(10, 230, 0)) then
-        local autoplay_popup = GUI.Notification:WaitForChild("Message")
-                                   :WaitForChild("Message"):WaitForChild("Main")
-
-        if autoplay_popup.Text.Text == "Want to spend 20 gems on AutoPlay" then
-            pressKey(Enum.KeyCode.BackSlash)
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.Right)
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.Right)
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.Return)
-            task.wait(0.5)
-            pressKey(Enum.KeyCode.BackSlash)
+    if game.ReplicatedStorage:FindFirstChild("Autoplay") then
+        if not game.ReplicatedStorage.Autoplay.Value then
+            game.ReplicatedStorage.Remotes.Input:FireServer("BuyAutoBattle")
         end
+    else
+        game.ReplicatedStorage.Remotes.Input:FireServer("BuyAutoBattle")
+        local success = game.ReplicatedStorage:WaitForChild("Autoplay", 5)
+        if not success then warn("AutoBattle purchase failed — not enough gems?"); return end
     end
+    print("AutoBattle is active!")
 end
 
-local function ManualUpgrade() -- added for pc
+local function ManualUpgrade()
     if GUI.HUD.UpgradeV2.Actions.Upgrade.Visible then
         firesignal(GUI.HUD.UpgradeV2.Actions.Upgrade.MouseButton1Click)
     end
 end
 
-local function ManualSell() -- added for pc
+local function ManualSell()
     if GUI.HUD.UpgradeV2.Actions.Sell.Visible then
         firesignal(GUI.HUD.UpgradeV2.Actions.Sell.MouseButton1Click)
     end
 end
 
 game:GetService("UserInputService").InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.E then
-        ManualUpgrade()
-    elseif input.KeyCode == Enum.KeyCode.Q then
-        ManualSell()
-    end
+    if input.KeyCode == Enum.KeyCode.E then ManualUpgrade()
+    elseif input.KeyCode == Enum.KeyCode.Q then ManualSell() end
 end)
 
 function ChangeSpeed(speed)
@@ -1877,12 +1404,10 @@ function ChangeSpeed(speed)
         while get_game_speed() ~= tonumber(speed) do
             local args = {[1] = "SpeedChange", [2] = true}
             if get_game_speed() < tonumber(speed) then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack(args))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(args))
             elseif get_game_speed() > tonumber(speed) then
                 args[2] = false
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack(args))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(args))
             end
             task.wait(1)
         end
@@ -1891,20 +1416,14 @@ end
 
 function AutoChangeSpeed()
     repeat task.wait(1) until get_game_speed() ~= nil
-
     while Settings.auto_2x or Settings.auto_3x do
         local args = {[1] = "SpeedChange", [2] = true}
-
-        if (Settings.auto_3x and get_game_speed() < 3) or
-            (Settings.auto_2x and get_game_speed() < 2) then
-            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                unpack(args))
+        if (Settings.auto_3x and get_game_speed() < 3) or (Settings.auto_2x and get_game_speed() < 2) then
+            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(args))
         elseif (Settings.auto_2x and get_game_speed() > 2) then
             args[2] = false
-            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                unpack(args))
+            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(args))
         end
-
         task.wait(1)
     end
 end
@@ -1912,107 +1431,41 @@ end
 function OnGameEnd()
     if not is_lobby() then
         local end_gui = GUI.HUD:WaitForChild("MissionEnd")
-
         repeat task.wait() until end_gui.Visible
-
-        -- DO ANY GAME ENDING ACTIONS HERE
         if Settings.webhook_end_game then
             local webhook_args = {}
             local bg = end_gui:FindFirstChild("BG")
-
             if bg ~= nil then
                 if bg:FindFirstChild("Times") ~= nil then
-                    local GameTimeElapsed = Split(
-                                                Split(bg:FindFirstChild("Times").Text,
-                                                      '\n')[2], "seconds")[1]
-                    local time_elapsed = tostring(
-                                             math.round(tonumber(GameTimeElapsed)))
-
-                    table.insert(webhook_args, {
-                        ["name"] = "Game Time Elapsed",
-                        ["value"] = ":timer: " .. time_elapsed,
-                        ["inline"] = true
-                    })
+                    local GameTimeElapsed = Split(Split(bg:FindFirstChild("Times").Text, '\n')[2], "seconds")[1]
+                    local time_elapsed = tostring(math.round(tonumber(GameTimeElapsed)))
+                    table.insert(webhook_args, {["name"] = "Game Time Elapsed", ["value"] = ":timer: " .. time_elapsed, ["inline"] = true})
                 end
             end
-
-            table.insert(webhook_args, {
-                ["name"] = "Macro Time Elapsed",
-                ["value"] = ":timer: " .. tostring(math.round(ElapsedTime())),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Macro Time Elapsed (1x)",
-                ["value"] = ":timer: " ..
-                    tostring(math.round(ElapsedTime() - TimeOffset)),
-                ["inline"] = true
-            })
-
+            table.insert(webhook_args, {["name"] = "Macro Time Elapsed", ["value"] = ":timer: " .. tostring(math.round(ElapsedTime())), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Macro Time Elapsed (1x)", ["value"] = ":timer: " .. tostring(math.round(ElapsedTime() - TimeOffset)), ["inline"] = true})
             local GameStatus = get_game_status()
             local GameStatusEmoji = ""
-
-            if GameStatus == "Success!" then
-                GameStatusEmoji = ":green_square: "
-            elseif GameStatus == "Failed!" then
-                GameStatusEmoji = ":red_square: "
-            end
-
-            table.insert(webhook_args, {
-                ["name"] = "Status",
-                ["value"] = GameStatusEmoji .. get_game_status(),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Waves",
-                ["value"] = ":ocean: " .. get_wave(),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Current Level",
-                ["value"] = ":star2: " .. get_level(),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Current Gems",
-                ["value"] = ":gem: " .. get_gems(),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Current Gold",
-                ["value"] = ":coin: " .. get_gold(),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Current Stardust",
-                ["value"] = ":star: " .. get_stardust(),
-                ["inline"] = true
-            })
-
-            table.insert(webhook_args, {
-                ["name"] = "Battle Pass Tier",
-                ["value"] = ":signal_strength: " .. get_battle_pass_tier(),
-                ["inline"] = true
-            })
-
+            if GameStatus == "Success!" then GameStatusEmoji = ":green_square: "
+            elseif GameStatus == "Failed!" then GameStatusEmoji = ":red_square: " end
+            table.insert(webhook_args, {["name"] = "Status", ["value"] = GameStatusEmoji .. get_game_status(), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Waves", ["value"] = ":ocean: " .. get_wave(), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Current Level", ["value"] = ":star2: " .. get_level(), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Current Gems", ["value"] = ":gem: " .. get_gems(), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Current Gold", ["value"] = ":coin: " .. get_gold(), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Current Stardust", ["value"] = ":star: " .. get_stardust(), ["inline"] = true})
+            table.insert(webhook_args, {["name"] = "Battle Pass Tier", ["value"] = ":signal_strength: " .. get_battle_pass_tier(), ["inline"] = true})
             SendWebhook(webhook_args)
         end
     end
 end
 
 function webhookbanner()
-    loadstring(game:HttpGet(
-                   "https://raw.githubusercontent.com/Jeikaru/Roblox/main/astd-banner.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Jeikaru/Roblox/main/astd-banner.lua"))()
 end
 
 function FpsBoost()
-    loadstring(game:HttpGet(
-                   "https://raw.githubusercontent.com/Jeikaru/Roblox/main/FpsBoost"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/Jeikaru/Roblox/main/FpsBoost"))()
 end
 
 local linkport = ""
@@ -2026,24 +1479,13 @@ end
 local function importMacro(url)
     local fileName = extractFileName(url)
     local savePath = folder_name .. "\\" .. fileName
-
     local success, response = pcall(function() return game:HttpGet(url) end)
-
     if success then
         writefile(savePath, response)
-
         local jsonData
-        success, jsonData = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(response)
-        end)
-
+        success, jsonData = pcall(function() return game:GetService("HttpService"):JSONDecode(response) end)
         if success then
-            Rayfield:Notify({
-                Title = "Macro Imported!",
-                Content = "Macro Import Success!",
-                Duration = 4,
-                Image = 4483362458
-            })
+            Library:Notify({Title = "Macro Imported!", Text = "Macro Import Success!", Duration = 4, Icon = "info"})
         else
             warn("Error parsing JSON: " .. jsonData)
         end
@@ -2056,24 +1498,13 @@ local function importSettings(url)
     local fileName = extractFileName(url)
     local tempSavePath = "KarmaPanda\\ASTD\\Settings\\" .. fileName
     local success, response = pcall(function() return game:HttpGet(url) end)
-
     if success then
         writefile(tempSavePath, response)
-
-        local success, jsonData = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(response)
-        end)
-
+        local success, jsonData = pcall(function() return game:GetService("HttpService"):JSONDecode(response) end)
         writefile(SettingsFile, response)
-        delfile(tempSavePath) -- Delete the Settings.json file after userid.json is created
-
+        delfile(tempSavePath)
         if success then
-            Rayfield:Notify({
-                Title = "Settings Imported!",
-                Content = "Settings Imported Rejoin to See the changes!",
-                Duration = 4,
-                Image = 4483362458
-            })
+            Library:Notify({Title = "Settings Imported!", Text = "Settings Imported Rejoin to See the changes!", Duration = 4, Icon = "info"})
         else
             warn("Error parsing JSON: " .. jsonData)
         end
@@ -2084,17 +1515,11 @@ end
 
 function AutoReplay()
     local end_gui = GUI.HUD:WaitForChild("MissionEnd")
-
     repeat task.wait() until end_gui.Visible
-
-    local replay_button = end_gui:WaitForChild("BG"):WaitForChild("Actions")
-                              :WaitForChild("Replay")
-    local next_button = end_gui:WaitForChild("BG"):WaitForChild("Actions")
-                            :WaitForChild("Next")
-
+    local replay_button = end_gui:WaitForChild("BG"):WaitForChild("Actions"):WaitForChild("Replay")
+    local next_button = end_gui:WaitForChild("BG"):WaitForChild("Actions"):WaitForChild("Next")
     while Settings.auto_replay do
         if Settings.auto_next_story and next_button.Visible then break end
-
         if replay_button.Visible then firesignal(replay_button.Activated) end
         task.wait(1)
     end
@@ -2102,12 +1527,8 @@ end
 
 function AutoNextStory()
     local end_gui = GUI.HUD:WaitForChild("MissionEnd")
-
     repeat task.wait() until end_gui.Visible
-
-    local next_button = end_gui:WaitForChild("BG"):WaitForChild("Actions")
-                            :WaitForChild("Next")
-
+    local next_button = end_gui:WaitForChild("BG"):WaitForChild("Actions"):WaitForChild("Next")
     while Settings.auto_next_story do
         if next_button.Visible then firesignal(next_button.Activated) end
         task.wait(1)
@@ -2116,40 +1537,29 @@ end
 
 function AutoUpgrade()
     while true do
-        while get_money() >= Settings.auto_upgrade_money and get_wave() >=
-            Settings.auto_upgrade_wave and Settings.auto_upgrade and get_wave() <
-            Settings.auto_upgrade_wave_stop do
-
+        while get_money() >= Settings.auto_upgrade_money and get_wave() >= Settings.auto_upgrade_wave
+            and Settings.auto_upgrade and get_wave() < Settings.auto_upgrade_wave_stop do
             local units = get_units()
-            local any_upgraded = false
-
             for _, unit in ipairs(units) do
                 local unit_name = unit.Name
-                if get_current_upgrade_level(unit) <
-                    get_max_upgrade_level(unit_name) then
+                if get_current_upgrade_level(unit) < get_max_upgrade_level(unit_name) then
                     local args = {[1] = "Upgrade", [2] = unit}
-                    game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer(
-                        unpack(args))
-                    any_upgraded = true
+                    game:GetService("ReplicatedStorage").Remotes.Server:InvokeServer(unpack(args))
                     wait(0.1)
                 end
             end
             wait(1)
         end
-
         if get_wave() >= Settings.auto_upgrade_wave_stop then
             warn("Auto-upgrade stopped at wave", Settings.auto_upgrade_wave_stop)
             Settings.auto_upgrade = false
             break
         end
-
         wait(1)
     end
 end
 
 function AutoSell()
-    local Wave = get_wave()
-
     local function units()
         local unitNames = {}
         for _, child in ipairs(workspace:GetChildren()) do
@@ -2163,21 +1573,17 @@ function AutoSell()
         end
         return unitNames
     end
-
-    local function SellUnit(unit)
+    local function SellUnitLocal(unit)
         task.spawn(function()
             local has_sold = false
             local attempts = 0
-
             workspace.Unit.ChildRemoved:Connect(function(x)
                 if unit == x then has_sold = true end
             end)
             repeat
                 if not has_sold then
                     local args = {[1] = "Sell", [2] = unit}
-
-                    game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                        unpack(args))
+                    game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(args))
                     has_sold = true
                 end
                 attempts = attempts + 1
@@ -2185,17 +1591,13 @@ function AutoSell()
             until has_sold or attempts >= 3
         end)
     end
-
     if get_wave() >= Settings.auto_upgrade_wave_sell then
         while Settings.auto_upgrade.auto_upgrade_sell do
             local unitList = units()["unit"]
             if unitList then
                 for _, unitName in ipairs(unitList) do
                     local unit = workspace.Unit[unitName]
-                    if unit then
-                        SellUnit(unit)
-                        task.wait(0.6)
-                    end
+                    if unit then SellUnitLocal(unit); task.wait(0.6) end
                 end
             else
                 break
@@ -2207,13 +1609,9 @@ end
 
 local function AutoBuffHelper(Units, unit, checks, ability_type, ability_name)
     for _, check in pairs(checks) do
-        if check == "attack" then
-            repeat task.wait() until not CheckAttackBuff(Units)
-        elseif check == "range" then
-            repeat task.wait() until not CheckRangeBuff(Units)
-        end
+        if check == "attack" then repeat task.wait() until not CheckAttackBuff(Units)
+        elseif check == "range" then repeat task.wait() until not CheckRangeBuff(Units) end
     end
-
     if ability_type == "Multiple" then
         UseMultipleAbilitiesUnit(unit, "", ability_name)
     else
@@ -2226,115 +1624,63 @@ function AutoBuff()
         task.spawn(function()
             while Settings.auto_buff do
                 local Units = {}
-
                 for _, unit in pairs(get_units()) do
-                    if unit.Name == k and unit:WaitForChild("SpecialMove").Value ~=
-                        "" then table.insert(Units, unit) end
+                    if unit.Name == k and unit:WaitForChild("SpecialMove").Value ~= "" then
+                        table.insert(Units, unit)
+                    end
                 end
-
                 local checks = v["Checks"]
                 local ability_type = v["Ability Type"]
                 local ability_name = nil
                 local time = v["Time"]
-
-                if ability_type == "Multiple" then
-                    ability_name = v["Ability Name"]
-                end
-
+                if ability_type == "Multiple" then ability_name = v["Ability Name"] end
                 if v["Mode"] == "Box" then
                     local Units2 = {}
-
                     if #Units > 4 and #Units < 8 then
-                        repeat
-                            task.wait(1)
-                            table.remove(Units, #Units)
-                        until #Units == 4
+                        repeat task.wait(1); table.remove(Units, #Units) until #Units == 4
                     end
-
                     if #Units == 8 then
-                        for i = 1, 4 do
-                            table.insert(Units2, Units[1])
-                            table.remove(Units, 1)
-                        end
+                        for i = 1, 4 do table.insert(Units2, Units[1]); table.remove(Units, 1) end
                     end
-
                     if #Units == 4 or #Units2 == 4 then
                         for i = 1, 4 do
-                            if not Settings.auto_buff or
-                                Settings.auto_buff_units[k] == nil then
-                                break
-                            end
-                            if #Units == 4 then
-                                AutoBuffHelper(Units, Units[i], checks,
-                                               ability_type, ability_name)
-                            end
-                            if #Units2 == 4 then
-                                AutoBuffHelper(Units2, Units2[i], checks,
-                                               ability_type, ability_name)
-                            end
-                            Delay(time, Settings.auto_buff and
-                                      Settings.auto_buff_units[k] ~= nil)
+                            if not Settings.auto_buff or Settings.auto_buff_units[k] == nil then break end
+                            if #Units == 4 then AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name) end
+                            if #Units2 == 4 then AutoBuffHelper(Units2, Units2[i], checks, ability_type, ability_name) end
+                            Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
                         end
                     end
                 elseif v["Mode"] == "Pair" then
                     if #Units >= 2 then
                         for i, v in pairs(Units) do
-                            if i % 2 ~= 0 then
-                                AutoBuffHelper(Units, Units[i], checks,
-                                               ability_type, ability_name)
-                            end
+                            if i % 2 ~= 0 then AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name) end
                         end
-
-                        Delay(time, Settings.auto_buff and
-                                  Settings.auto_buff_units[k] ~= nil)
-
+                        Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
                         for i, v in pairs(Units) do
-                            if i % 2 == 0 then
-                                AutoBuffHelper(Units, Units[i], checks,
-                                               ability_type, ability_name)
-                            end
+                            if i % 2 == 0 then AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name) end
                         end
-
-                        Delay(time, Settings.auto_buff and
-                                  Settings.auto_buff_units[k] ~= nil)
+                        Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
                     end
                 elseif v["Mode"] == "Spam" then
                     for i, unit in pairs(Units) do
-                        AutoBuffHelper(Units, Units[i], checks, ability_type,
-                                       ability_name)
+                        AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name)
                     end
-                    Delay(time, Settings.auto_buff and
-                              Settings.auto_buff_units[k] ~= nil)
-
+                    Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
                 elseif v["Mode"] == "Cycle" then
                     local cycle_units = 8
-
-                    if v["Cycle Units"] ~= nil then
-                        cycle_units = v["Cycle Units"]
-                    end
-
+                    if v["Cycle Units"] ~= nil then cycle_units = v["Cycle Units"] end
                     if #Units >= cycle_units then
                         for i, v in pairs(Units) do
-                            if Settings.auto_buff and
-                                Settings.auto_buff_units[k] ~= nil and #Units >=
-                                cycle_units then
-                                AutoBuffHelper(Units, Units[i], checks,
-                                               ability_type, ability_name)
+                            if Settings.auto_buff and Settings.auto_buff_units[k] ~= nil and #Units >= cycle_units then
+                                AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name)
                             else
                                 break
                             end
-                            Delay(time,
-                                  Settings.auto_buff and
-                                      Settings.auto_buff_units[k] ~= nil and
-                                      #Units >= cycle_units)
+                            Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil and #Units >= cycle_units)
                         end
                     end
                 end
-
-                if v["Delay"] ~= nil then
-                    Delay(v["Delay"], Settings.auto_buff)
-                end
-
+                if v["Delay"] ~= nil then Delay(v["Delay"], Settings.auto_buff) end
                 task.wait()
             end
         end)
@@ -2345,74 +1691,42 @@ local isEvolvingEXP = false
 
 function AutoEvolveEXP()
     local function GetInventory()
-        local units = game.ReplicatedStorage.Remotes.Server:InvokeServer("Data",
-                                                                         "Units")
-        return units
+        return game.ReplicatedStorage.Remotes.Server:InvokeServer("Data", "Units")
     end
-
     local function CountEXP()
         local inventory = GetInventory()
-        local exp1 = 0
-        local exp2 = 0
-        local exp3 = 0
-        local exp4 = 0
-
+        local exp1, exp2, exp3, exp4 = 0, 0, 0, 0
         for _, v in pairs(inventory) do
             if v.Name == "EXP IV" then exp4 = exp4 + 1 end
-
             if v.Name == "EXP III" then exp3 = exp3 + 1 end
-
             if v.Name == "EXP II" then exp2 = exp2 + 1 end
-
             if v.Name == "EXP I" then exp1 = exp1 + 1 end
         end
-
         return exp1, exp2, exp3, exp4
     end
-
     local function GetEXPUnitID(name)
         local inventory = GetInventory()
-
-        for _, v in pairs(inventory) do
-            if v.Name == name then return v.ID end
-        end
-
+        for _, v in pairs(inventory) do if v.Name == name then return v.ID end end
         return nil
     end
-
     local function EvolveHelper(unit_name)
         local unit_id = GetEXPUnitID(unit_name)
-
         if unit_id ~= nil then
             local args = {[1] = "UpgradeUnit", [2] = unit_name, [3] = unit_id}
-            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                unpack(args))
+            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(args))
             task.wait(0.25)
         end
-
         return CountEXP()
     end
-
     local exp1, exp2, exp3, exp4 = CountEXP()
-
     if exp3 >= 3 or exp2 >= 3 or exp1 >= 2 then
         isEvolvingEXP = true
         while exp3 >= 3 or exp2 >= 3 or exp1 >= 2 do
-            if exp3 >= 3 then
-                exp1, exp2, exp3, exp4 = EvolveHelper("EXP III")
-            end
-
-            if exp2 >= 3 then
-                exp1, exp2, exp3, exp4 = EvolveHelper("EXP II")
-            end
-
-            if exp3 >= 3 or exp2 >= 3 then
-                isEvolvingEXP = true
-            elseif exp1 >= 2 then
-                exp1, exp2, exp3, exp4 = EvolveHelper("EXP I")
-            else
-                break
-            end
+            if exp3 >= 3 then exp1, exp2, exp3, exp4 = EvolveHelper("EXP III") end
+            if exp2 >= 3 then exp1, exp2, exp3, exp4 = EvolveHelper("EXP II") end
+            if exp3 >= 3 or exp2 >= 3 then isEvolvingEXP = true
+            elseif exp1 >= 2 then exp1, exp2, exp3, exp4 = EvolveHelper("EXP I")
+            else break end
         end
         if Settings.webhook_exp_evolve then
             SendWebhook({
@@ -2423,16 +1737,13 @@ function AutoEvolveEXP()
             })
         end
     end
-
     HideSummonGUI()
     isEvolvingEXP = false
 end
 
 function AutoTower()
     local player = game:GetService("Players").LocalPlayer
-    local towerteleporter = workspace.Queue.InteractionsV2:FindFirstChild(
-                                "Script633")
-
+    local towerteleporter = workspace.Queue.InteractionsV2:FindFirstChild("Script633")
     local function UseTeleporter(teleporter)
         if teleporter ~= nil then
             firetouchinterest(player.Character.HumanoidRootPart, teleporter, 0)
@@ -2441,34 +1752,23 @@ function AutoTower()
             task.wait(1)
         end
     end
-
     local function pressKey(keyCode)
-        game:GetService("VirtualInputManager"):SendKeyEvent(true, keyCode,
-                                                            false, game)
+        game:GetService("VirtualInputManager"):SendKeyEvent(true, keyCode, false, game)
         task.wait(0.1)
-        game:GetService("VirtualInputManager"):SendKeyEvent(false, keyCode,
-                                                            false, game)
+        game:GetService("VirtualInputManager"):SendKeyEvent(false, keyCode, false, game)
     end
-
     UseTeleporter(towerteleporter)
-
-    if player.PlayerGui.HUD.TowerLevelSelector.StoryModeChooser.StoryModeChooser
-        .Visible then
+    if player.PlayerGui.HUD.TowerLevelSelector.StoryModeChooser.StoryModeChooser.Visible then
+        pressKey(Enum.KeyCode.BackSlash); task.wait(0.5)
+        pressKey(Enum.KeyCode.Right); task.wait(0.5)
+        pressKey(Enum.KeyCode.Return); task.wait(0.5)
         pressKey(Enum.KeyCode.BackSlash)
-        task.wait(0.5)
-        pressKey(Enum.KeyCode.Right)
-        task.wait(0.5)
-        pressKey(Enum.KeyCode.Return)
-        task.wait(0.5)
-        pressKey(Enum.KeyCode.BackSlash)
-
-        game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({
-            [1] = towerteleporter.Name .. "Start"
-        }))
+        game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = towerteleporter.Name .. "Start"}))
     end
 end
 
 function AutoJoinGame()
+    if Settings.auto_join_mode == "Story" then DetectStoryLevel() end
     local function UseTeleporter(teleporter)
         if teleporter ~= nil then
             firetouchinterest(Player.Character.HumanoidRootPart, teleporter, 0)
@@ -2477,267 +1777,146 @@ function AutoJoinGame()
             task.wait(1)
         end
     end
-
     local function QuickStartTeleporter(teleporter)
         task.wait(1)
-        Player.Character.HumanoidRootPart.CFrame =
-            game:GetService("Workspace").SpawnLocation.CFrame
+        Player.Character.HumanoidRootPart.CFrame = game:GetService("Workspace").SpawnLocation.CFrame
         task.wait(1)
         if teleporter ~= nil then
-            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                unpack({[1] = teleporter.Name .. "Start"}))
+            game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = teleporter.Name .. "Start"}))
         end
     end
-
     if Settings.auto_evolve_exp then
-        repeat task.wait() until not isEvolvingEXP or
-            not Settings.auto_evolve_exp
+        repeat task.wait() until not isEvolvingEXP or not Settings.auto_evolve_exp
     end
-
     if not Settings.auto_join_game then return end
-
     task.wait(Settings.auto_join_delay)
-
-    local args = {}
     local teleporter = nil
-
-    -- TODO: Add server hopper on teleport failed.
     if get_world() == 1 then
-        -- TODO: Teleport to teleporter location if no teleporters loaded.
         local function FindTeleporter(Teleporters)
             local Found = false
-
             while not Found do
                 for _, v in pairs(Teleporters) do
-                    if v.ClassName == "Part" and
-                        v.SurfaceGui.Frame.TextLabel.Text == "Empty" then
-                        Found = true
-                        return v
+                    if v.ClassName == "Part" and v.SurfaceGui.Frame.TextLabel.Text == "Empty" then
+                        Found = true; return v
                     end
                 end
-
                 task.wait()
             end
-
             return nil
         end
         local function GetStoryTeleporters()
             local Teleporters = {}
-            local TeleporterNames = {
-                "Script170", "Script158", "Script395", "Script408", "Script523",
-                "Script539", "Script573", "Script600", "Script624", "Script958"
-            }
-
-            for _, v in pairs(
-                            game:GetService("Workspace").Queue.InteractionsV2:GetChildren()) do
-                if table.find(TeleporterNames, v.Name) ~= nil then
-                    table.insert(Teleporters, v)
-                end
+            local TeleporterNames = {"Script170","Script158","Script395","Script408","Script523","Script539","Script573","Script600","Script624","Script958"}
+            for _, v in pairs(game:GetService("Workspace").Queue.InteractionsV2:GetChildren()) do
+                if table.find(TeleporterNames, v.Name) ~= nil then table.insert(Teleporters, v) end
             end
-
             return Teleporters
         end
         local function GetInfiniteTeleporters()
             local Teleporters = {}
-            local TeleporterNames = {
-                "Script209", "Script222", "Script381", "Script405", "Script448",
-                "Script58", "Script647", "Script716"
-            }
-
-            for _, v in pairs(
-                            game:GetService("Workspace").Queue.InteractionsV2:GetChildren()) do
-                if table.find(TeleporterNames, v.Name) ~= nil then
-                    table.insert(Teleporters, v)
-                end
+            local TeleporterNames = {"Script209","Script222","Script381","Script405","Script448","Script58","Script647","Script716"}
+            for _, v in pairs(game:GetService("Workspace").Queue.InteractionsV2:GetChildren()) do
+                if table.find(TeleporterNames, v.Name) ~= nil then table.insert(Teleporters, v) end
             end
-
             return Teleporters
         end
         local function SetStoryMap(teleporter)
             if teleporter ~= nil then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack({
-                        [1] = teleporter.Name .. "Level",
-                        [2] = tostring(Settings.auto_join_story_level),
-                        [3] = false
-                    }))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = teleporter.Name .. "Level", [2] = tostring(Settings.auto_join_story_level), [3] = false}))
             end
         end
         local function SetInfiniteMap(teleporter)
             if teleporter ~= nil then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack({
-                        [1] = teleporter.Name .. "Level",
-                        [2] = Settings.auto_join_infinite_level,
-                        [3] = false
-                    }))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = teleporter.Name .. "Level", [2] = Settings.auto_join_infinite_level, [3] = false}))
             end
         end
-        local function TeleportToWorld2()
-            UseTeleporter(get_world_teleporter())
-        end
+        local function TeleportToWorld2() UseTeleporter(get_world_teleporter()) end
         if Settings.auto_join_mode == "Story" then
-            if Settings.auto_join_story_level > 120 then
-                TeleportToWorld2()
-                return
-            end
+            if Settings.auto_join_story_level > 120 then TeleportToWorld2(); return end
             teleporter = FindTeleporter(GetStoryTeleporters())
-            UseTeleporter(teleporter)
-            SetStoryMap(teleporter)
+            UseTeleporter(teleporter); SetStoryMap(teleporter)
         elseif Settings.auto_join_mode == "Infinite" then
-            if InfiniteMapTable[Settings.auto_join_infinite_level] == "Gauntlet" or
-                InfiniteMapTable[Settings.auto_join_infinite_level] ==
-                "Training" then
-                TeleportToWorld2()
-                return
+            if InfiniteMapTable[Settings.auto_join_infinite_level] == "Gauntlet" or InfiniteMapTable[Settings.auto_join_infinite_level] == "Training" then
+                TeleportToWorld2(); return
             end
             teleporter = FindTeleporter(GetInfiniteTeleporters())
-            UseTeleporter(teleporter)
-            SetInfiniteMap(teleporter)
-        elseif Settings.auto_join_mode == "Adventure" then
-            TeleportToWorld2()
-            return
+            UseTeleporter(teleporter); SetInfiniteMap(teleporter)
+        elseif Settings.auto_join_mode == "Adventure" then TeleportToWorld2(); return
         elseif Settings.auto_join_mode == "Time Chamber" then
-            UseTeleporter(game:GetService("Workspace").Queue.Interactions
-                              .Script548)
+            UseTeleporter(game:GetService("Workspace").Queue.Interactions.Script548)
         elseif Settings.auto_join_mode == "Team Event" then
             for _, v in pairs(game:GetService("Workspace").Queue:GetChildren()) do
                 if v.Name == "Model" and v:FindFirstChild("PortalPart") ~= nil then
-                    UseTeleporter(v:FindFirstChild("PortalPart"))
-                    break
+                    UseTeleporter(v:FindFirstChild("PortalPart")); break
                 end
             end
         elseif Settings.auto_join_mode == "Bakugan Event" then
-            UseTeleporter(game:GetService("Workspace").Queue.BakuganEventArea
-                              .Script412)
+            UseTeleporter(game:GetService("Workspace").Queue.BakuganEventArea.Script412)
         end
         QuickStartTeleporter(teleporter)
     elseif get_world() == 2 then
         local function FindTeleporter(Teleporters, Mode)
             local Found = false
-
             while not Found do
                 for _, v in pairs(Teleporters) do
-                    if (Mode == nil or v.Name == Mode) and v.ClassName == "Part" and
-                        v.SurfaceGui.Frame.TextLabel.Text == "Empty" then
-                        Found = true
-                        return v
+                    if (Mode == nil or v.Name == Mode) and v.ClassName == "Part" and v.SurfaceGui.Frame.TextLabel.Text == "Empty" then
+                        Found = true; return v
                     end
                 end
-
                 task.wait()
             end
-
             return nil
         end
         local function SetStoryMap(teleporter)
             if teleporter ~= nil then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack({
-                        [1] = "StoryModeLevel",
-                        [2] = tostring(Settings.auto_join_story_level),
-                        [3] = true
-                    }))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = "StoryModeLevel", [2] = tostring(Settings.auto_join_story_level), [3] = true}))
             end
         end
         local function SetInfiniteMap(teleporter)
             if teleporter ~= nil then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack({
-                        [1] = "InfiniteModeLevel",
-                        [2] = Settings.auto_join_infinite_level,
-                        [3] = false
-                    }))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = "InfiniteModeLevel", [2] = Settings.auto_join_infinite_level, [3] = false}))
             end
         end
         local function SetAdventureMap(teleporter)
             if teleporter ~= nil then
-                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
-                    unpack({
-                        [1] = "AdventureModeLevel",
-                        [2] = Settings.auto_join_adventure_level,
-                        [3] = false
-                    }))
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack({[1] = "AdventureModeLevel", [2] = Settings.auto_join_adventure_level, [3] = false}))
             end
         end
-        local function TeleportToWorld1()
-            UseTeleporter(get_world_teleporter())
-        end
+        local function TeleportToWorld1() UseTeleporter(get_world_teleporter()) end
         local teleporter = nil
         if Settings.auto_join_mode == "Story" then
-            if Settings.auto_join_story_level < 121 then
-                TeleportToWorld1()
-                return
-            end
-            repeat task.wait() until #game:GetService("Workspace").Joinables:GetChildren() >
-                0
-            teleporter = FindTeleporter(
-                             game:GetService("Workspace").Joinables:GetChildren(),
-                             "StoryMode")
-            UseTeleporter(teleporter)
-            SetStoryMap(teleporter)
+            if Settings.auto_join_story_level < 121 then TeleportToWorld1(); return end
+            repeat task.wait() until #game:GetService("Workspace").Joinables:GetChildren() > 0
+            teleporter = FindTeleporter(game:GetService("Workspace").Joinables:GetChildren(), "StoryMode")
+            UseTeleporter(teleporter); SetStoryMap(teleporter)
         elseif Settings.auto_join_mode == "Infinite" then
-            if InfiniteMapTable[Settings.auto_join_infinite_level] == "Farm" then
-                TeleportToWorld1()
-                return
-            end
-            repeat task.wait() until #game:GetService("Workspace").Joinables:GetChildren() >
-                0
-            teleporter = FindTeleporter(
-                             game:GetService("Workspace").Joinables:GetChildren(),
-                             "InfiniteMode")
-            UseTeleporter(teleporter)
-            SetInfiniteMap(teleporter)
+            if InfiniteMapTable[Settings.auto_join_infinite_level] == "Farm" then TeleportToWorld1(); return end
+            repeat task.wait() until #game:GetService("Workspace").Joinables:GetChildren() > 0
+            teleporter = FindTeleporter(game:GetService("Workspace").Joinables:GetChildren(), "InfiniteMode")
+            UseTeleporter(teleporter); SetInfiniteMap(teleporter)
         elseif Settings.auto_join_mode == "Adventure" then
-            repeat task.wait() until #game:GetService("Workspace").Joinables:GetChildren() >
-                0
-            teleporter = FindTeleporter(
-                             game:GetService("Workspace").Joinables:GetChildren(),
-                             "AdventureMode")
-            UseTeleporter(teleporter)
-            SetAdventureMap(teleporter)
-        elseif Settings.auto_join_mode == "Time Chamber" then
-            TeleportToWorld1()
-            return
-        elseif Settings.auto_join_mode == "Team Event" then
-            TeleportToWorld1()
-            return
-        elseif Settings.auto_join_mode == "Bakugan Event" then
-            TeleportToWorld1()
-            return
+            repeat task.wait() until #game:GetService("Workspace").Joinables:GetChildren() > 0
+            teleporter = FindTeleporter(game:GetService("Workspace").Joinables:GetChildren(), "AdventureMode")
+            UseTeleporter(teleporter); SetAdventureMap(teleporter)
+        elseif Settings.auto_join_mode == "Time Chamber" then TeleportToWorld1(); return
+        elseif Settings.auto_join_mode == "Team Event" then TeleportToWorld1(); return
+        elseif Settings.auto_join_mode == "Bakugan Event" then TeleportToWorld1(); return
         end
         QuickStartTeleporter(teleporter)
-        --[[elseif get_world() == -2 then -- team event map (reaper's base)
-        for _, v in pairs(game:GetService("Workspace"):GetChildren()) do
-            if v.Name == "Model" and v:FindFirstChild("Meshes/senkaimon2 (1)") ~=
-                nil then
-                Player.Character.HumanoidRootPart.CFrame = v:FindFirstChild(
-                                                               "Meshes/senkaimon2 (1)").CFrame
-                break
-            end
-        end]] --
     end
 end
 
 function AutoSkipGUI()
     local SummonGUI = GUI:WaitForChild("Summon")
-
     while Settings.auto_skip_gui do
         local status, err = pcall(function()
-            -- TODO: Stop when other things are opened.
             if SummonGUI:FindFirstChild('Skip').Visible then
                 game:GetService('VirtualUser'):ClickButton1(Vector2.new(
-                                                                workspace.CurrentCamera
-                                                                    .ViewportSize
-                                                                    .X / 2,
-                                                                workspace.CurrentCamera
-                                                                    .ViewportSize
-                                                                    .Y / 2))
+                    workspace.CurrentCamera.ViewportSize.X / 2,
+                    workspace.CurrentCamera.ViewportSize.Y / 2))
             end
         end)
-
         if not status then print("Error on Auto Skip GUI: " .. err) end
-
         task.wait()
     end
 end
@@ -2745,40 +1924,29 @@ end
 local function AnonMode()
     local player = game.Players.LocalPlayer
     local userId = "p_" .. tostring(player.UserId)
-
     local success, err = pcall(function()
-        local playerName = game:GetService("CoreGui").PlayerList
-                               .PlayerListMaster.OffsetFrame.PlayerScrollList
-                               .SizeOffsetFrame.ScrollingFrameContainer
-                               .ScrollingFrameClippingFrame.ScollingFrame
-                               .OffsetUndoFrame[userId].ChildrenFrame.NameFrame
-                               .BGFrame.OverlayFrame.PlayerName.PlayerName
-
+        local playerName = game:GetService("CoreGui").PlayerList.PlayerListMaster
+                               .OffsetFrame.PlayerScrollList.SizeOffsetFrame
+                               .ScrollingFrameContainer.ScrollingFrameClippingFrame
+                               .ScollingFrame.OffsetUndoFrame[userId].ChildrenFrame
+                               .NameFrame.BGFrame.OverlayFrame.PlayerName.PlayerName
         playerName.Text = Settings.anonymous_mode_name
     end)
-
     if not success then warn("Failed to change name in leaderboard: " .. err) end
-
-    if not success then warn("Failed to change name in leaderboard: " .. err) end
-
-    local nameLabel = game:GetService("Workspace").Camera:WaitForChild(
-                          Player.Name).Head:WaitForChild("NameLevelBBGUI")
-                          :WaitForChild("NameFrame"):WaitForChild("TextLabel")
+    local nameLabel = game:GetService("Workspace").Camera:WaitForChild(Player.Name)
+                          .Head:WaitForChild("NameLevelBBGUI"):WaitForChild("NameFrame")
+                          :WaitForChild("TextLabel")
     nameLabel.Text = Settings.anonymous_mode_name
 end
 
--- TODO: Change all task.spawns to coroutines for easier management on re-executes and prevent double execution of the same function.
 if get_world() ~= -1 and get_world() ~= -2 then
     repeat task.wait() until not GUI:WaitForChild("LoadingScreen").Frame.Visible
-
     if not is_lobby() then
         CalculateTimeOffset()
         task.spawn(StartActionQueue)
         if Settings.auto_buff then task.spawn(AutoBuff) end
         if Settings.auto_vote_extreme then task.spawn(AutoVoteExtreme) end
-        if Settings.auto_2x or Settings.auto_3x then
-            task.spawn(AutoChangeSpeed)
-        end
+        if Settings.auto_2x or Settings.auto_3x then task.spawn(AutoChangeSpeed) end
         if Settings.auto_battle then task.spawn(AutoBattle) end
         if Settings.auto_replay then task.spawn(AutoReplay) end
         if Settings.auto_next_story then task.spawn(AutoNextStory) end
@@ -2794,7 +1962,6 @@ if get_world() ~= -1 and get_world() ~= -2 then
         if Settings.auto_join_tower then task.spawn(AutoTower) end
         task.spawn(webhookbanner)
     end
-
     if Settings.auto_skip_gui then task.spawn(AutoSkipGUI) end
     if Settings.FPSBoost then task.spawn(FpsBoost) end
     if Settings.anonymous_mode then task.spawn(AnonMode) end
@@ -2802,16 +1969,12 @@ end
 
 if get_world() == -2 and Settings.auto_join_game then task.spawn(AutoJoinGame) end
 
--- Tasks that run regardless if its in lobby or in game.
 task.spawn(function()
     if Settings.disable_3d_rendering then
-        game:GetService("RunService"):Set3dRenderingEnabled(
-            not Settings.disable_3d_rendering)
+        game:GetService("RunService"):Set3dRenderingEnabled(not Settings.disable_3d_rendering)
     end
     if Settings.anti_afk then
-        for _, v in pairs(getconnections(game.Players.LocalPlayer.Idled)) do
-            v:Disable()
-        end
+        for _, v in pairs(getconnections(game.Players.LocalPlayer.Idled)) do v:Disable() end
     end
 end)
 
@@ -2819,14 +1982,12 @@ print("[KarmaPanda] Functions Loaded: " .. os.clock() - benchmark_time)
 benchmark_time = os.clock()
 
 local function CreateHideButtonGUI()
-    loadstring(game:HttpGet(
-                   'https://raw.githubusercontent.com/Jeikaru/Roblox/main/HideGui'))()
+    Library:SetMobileButtonVisible(true)
 end
 
 local function CreateMiniGUI()
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Parent = GUI
-
     local MiniFrame = Instance.new("Frame")
     MiniFrame.Size = UDim2.new(0, 150, 0, 30)
     MiniFrame.Position = UDim2.new(1, -150, 0, 0)
@@ -2835,7 +1996,6 @@ local function CreateMiniGUI()
     MiniFrame.Active = true
     MiniFrame.Draggable = true
     MiniFrame.Parent = ScreenGui
-
     local miniLabel = Instance.new("TextLabel")
     miniLabel.Size = UDim2.new(1, 0, 1, 0)
     miniLabel.Position = UDim2.new(0, 0, 0, 0)
@@ -2845,7 +2005,6 @@ local function CreateMiniGUI()
     miniLabel.TextSize = 18
     miniLabel.TextColor3 = Color3.new(1, 1, 1)
     miniLabel.Parent = MiniFrame
-
     local miniArrowButton = Instance.new("TextButton")
     miniArrowButton.Size = UDim2.new(0, 20, 0, 20)
     miniArrowButton.Position = UDim2.new(1, -25, 0, 5)
@@ -2855,114 +2014,72 @@ local function CreateMiniGUI()
     miniArrowButton.TextSize = 14
     miniArrowButton.TextColor3 = Color3.new(1, 1, 1)
     miniArrowButton.Parent = MiniFrame
-
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(0, 150, 0, 150)
     Frame.Position = UDim2.new(0, 0, 1, 0)
     Frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
     Frame.BorderSizePixel = 0
     Frame.Active = true
-    Frame.Visible = false -- Initially hidden
+    Frame.Visible = false
     Frame.Parent = MiniFrame
-
     local borderThickness = 6
-
     local function createBorder(parent, color, size, position)
         local border = Instance.new("Frame")
-        border.Size = size
-        border.Position = position
-        border.BackgroundColor3 = color
-        border.BorderSizePixel = 0
-        border.Parent = parent
+        border.Size = size; border.Position = position
+        border.BackgroundColor3 = color; border.BorderSizePixel = 0; border.Parent = parent
     end
-
-    createBorder(Frame, Color3.fromRGB(55, 55, 55),
-                 UDim2.new(1, 0, 0, borderThickness), UDim2.new(0, 0, 0, 0))
-    createBorder(Frame, Color3.fromRGB(55, 55, 55),
-                 UDim2.new(1, 0, 0, borderThickness),
-                 UDim2.new(0, 0, 1, -borderThickness))
-    createBorder(Frame, Color3.fromRGB(55, 55, 55),
-                 UDim2.new(0, borderThickness, 1, 0), UDim2.new(0, 0, 0, 0))
-    createBorder(Frame, Color3.fromRGB(55, 55, 55),
-                 UDim2.new(0, borderThickness, 1, 0),
-                 UDim2.new(1, -borderThickness, 0, 0))
-
+    createBorder(Frame, Color3.fromRGB(55,55,55), UDim2.new(1,0,0,borderThickness), UDim2.new(0,0,0,0))
+    createBorder(Frame, Color3.fromRGB(55,55,55), UDim2.new(1,0,0,borderThickness), UDim2.new(0,0,1,-borderThickness))
+    createBorder(Frame, Color3.fromRGB(55,55,55), UDim2.new(0,borderThickness,1,0), UDim2.new(0,0,0,0))
+    createBorder(Frame, Color3.fromRGB(55,55,55), UDim2.new(0,borderThickness,1,0), UDim2.new(1,-borderThickness,0,0))
     local timerLabel = Instance.new("TextLabel")
-    timerLabel.Size = UDim2.new(1, -borderThickness * 2, 0, 20)
+    timerLabel.Size = UDim2.new(1, -borderThickness*2, 0, 20)
     timerLabel.Position = UDim2.new(0, borderThickness, 0, borderThickness)
-    timerLabel.BackgroundTransparency = 1
-    timerLabel.Text = "Game Time: nil"
-    timerLabel.Font = Enum.Font.SourceSans
-    timerLabel.TextSize = 14
-    timerLabel.TextColor3 = Color3.new(1, 1, 1)
-    timerLabel.Parent = Frame
-
+    timerLabel.BackgroundTransparency = 1; timerLabel.Text = "Game Time: nil"
+    timerLabel.Font = Enum.Font.SourceSans; timerLabel.TextSize = 14
+    timerLabel.TextColor3 = Color3.new(1,1,1); timerLabel.Parent = Frame
     local playbackLabel = Instance.new("TextLabel")
-    playbackLabel.Size = UDim2.new(1, -borderThickness * 2, 1,
-                                   -borderThickness * 3 - 20)
-    playbackLabel.Position = UDim2.new(0, borderThickness, 0,
-                                       borderThickness * 2 + 20)
-    playbackLabel.BackgroundTransparency = 1
-    playbackLabel.Text = "Loading..."
-    playbackLabel.Font = Enum.Font.SourceSans
-    playbackLabel.TextSize = 14
-    playbackLabel.TextColor3 = Color3.new(1, 1, 1)
-    playbackLabel.TextWrapped = true
-    playbackLabel.TextYAlignment = Enum.TextYAlignment.Top
-    playbackLabel.Parent = Frame
-
+    playbackLabel.Size = UDim2.new(1, -borderThickness*2, 1, -borderThickness*3-20)
+    playbackLabel.Position = UDim2.new(0, borderThickness, 0, borderThickness*2+20)
+    playbackLabel.BackgroundTransparency = 1; playbackLabel.Text = "Loading..."
+    playbackLabel.Font = Enum.Font.SourceSans; playbackLabel.TextSize = 14
+    playbackLabel.TextColor3 = Color3.new(1,1,1); playbackLabel.TextWrapped = true
+    playbackLabel.TextYAlignment = Enum.TextYAlignment.Top; playbackLabel.Parent = Frame
     local isOpen = false
-
-    local function toggleGUI() -- fixed
-        isOpen = not isOpen
-        Frame.Visible = isOpen
+    local function toggleGUI()
+        isOpen = not isOpen; Frame.Visible = isOpen
         miniArrowButton.Text = isOpen and "^" or "v"
     end
-
     miniArrowButton.MouseButton1Click:Connect(toggleGUI)
-
     local lastUpdateTime = 0
     local updateInterval = 0.5
-
     local function Update()
         if not isOpen then return end
-
         local currentTime = tick()
         if currentTime - lastUpdateTime >= updateInterval then
             local elapsed = ElapsedTime()
             local mins = math.floor(elapsed / 60)
             local secs = elapsed % 60
             timerLabel.Text = string.format("Game Time: %d:%02d", mins, secs)
-
             if CurrentStep ~= nil then
-                local MacroCurrentStep =
-                    Macros[Settings.macro_profile]["Macro"][CurrentStep]
-
+                local MacroCurrentStep = Macros[Settings.macro_profile]["Macro"][CurrentStep]
                 if MacroCurrentStep then
                     local Target = MacroCurrentStep["Target"]
                     local TargetName = Target and Target["Name"] or "Unknown"
                     local TargetIndex = Target and Target["Index"] or "N/A"
                     local Time = MacroCurrentStep["Time"] or "N/A"
-                    local Remote = MacroCurrentStep["Remote"] and
-                                       MacroCurrentStep["Remote"][1] or "N/A"
+                    local Remote = MacroCurrentStep["Remote"] and MacroCurrentStep["Remote"][1] or "N/A"
                     local Parameters = MacroCurrentStep["Parameter"]
-
                     local parameterString = ""
                     if Parameters then
                         for k, v in pairs(Parameters) do
-                            parameterString =
-                                parameterString .. tostring(k) .. ": " ..
-                                    tostring(v) .. "; "
+                            parameterString = parameterString .. tostring(k) .. ": " .. tostring(v) .. "; "
                         end
                     end
-
                     playbackLabel.Text = string.format(
-                                             "Current Step: %s\nTarget: %s[%s]\nTime: %s\nAction: %s\nParameters: %s",
-                                             tostring(CurrentStep),
-                                             tostring(TargetName),
-                                             tostring(TargetIndex),
-                                             tostring(Time), tostring(Remote),
-                                             tostring(parameterString))
+                        "Current Step: %s\nTarget: %s[%s]\nTime: %s\nAction: %s\nParameters: %s",
+                        tostring(CurrentStep), tostring(TargetName), tostring(TargetIndex),
+                        tostring(Time), tostring(Remote), tostring(parameterString))
                 end
             end
             lastUpdateTime = currentTime
@@ -2973,1201 +2090,781 @@ local function CreateMiniGUI()
     end
 end
 
+-- ============================================================
+-- UI: Facility native tabs, sections, and controls.
 function InitializeUI()
     local UnitList = get_all_units()
 
     local function MainSettings()
-        local Main = Window:CreateTab("Main", 4483362458)
-        local GameplayScriptsSection = Main:CreateSection("Gameplay Scripts")
-        local AutoBuffToggle = Main:CreateToggle({
-            Name = "Auto Unit Buffing",
-            CurrentValue = Settings.auto_buff,
+        local Main = Window:Tab("Main")
+        local MainSection
+        MainSection = Main:Full("Gameplay Scripts")
+        local AutoBuffToggle = AddToggle(MainSection, {
+            Text = "Auto Unit Buffing",
+            Default = Settings.auto_buff,
+            Flag = "auto_buff",
             Callback = function(value)
-                Settings.auto_buff = value
-                Save()
+                Settings.auto_buff = value; Save()
                 if not is_lobby() and value then AutoBuff() end
-            end,
-            SectionParent = GameplayScriptsSection
+            end
         })
-        local AutoUpgradeToggle = Main:CreateToggle({
-            Name = "Auto Upgrade",
-            CurrentValue = Settings.auto_upgrade,
+        local AutoUpgradeToggle = AddToggle(MainSection, {
+            Text = "Auto Upgrade",
+            Default = Settings.auto_upgrade,
+            Flag = "auto_upgrade",
             Callback = function(value)
-                Settings.auto_upgrade = value
-                Save()
+                Settings.auto_upgrade = value; Save()
                 if not is_lobby() and value then AutoUpgrade() end
-            end,
-            SectionParent = GameplayScriptsSection
+            end
         })
-        local AutoSellToggle = Main:CreateToggle({
-            Name = "Auto Sell",
-            CurrentValue = Settings.auto_upgrade_sell,
+        local AutoSellToggle = AddToggle(MainSection, {
+            Text = "Auto Sell",
+            Default = Settings.auto_upgrade_sell,
+            Flag = "auto_upgrade_sell",
             Callback = function(value)
-                Settings.auto_upgrade_sell = value
-                Save()
+                Settings.auto_upgrade_sell = value; Save()
                 if not is_lobby() and value then AutoSell() end
-            end,
-            SectionParent = GameplayScriptsSection
+            end
         })
-        local GUIScriptsSection = Main:CreateSection("GUI Scripts")
-        local AutoVoteExtremeToggle = Main:CreateToggle({
-            Name = "Auto Vote Extreme Mode",
-            CurrentValue = Settings.auto_vote_extreme,
+        MainSection = Main:Full("GUI Scripts")
+        local AutoVoteExtremeToggle = AddToggle(MainSection, {
+            Text = "Auto Vote Extreme Mode",
+            Default = Settings.auto_vote_extreme,
+            Flag = "auto_vote_extreme",
             Callback = function(value)
-                Settings.auto_vote_extreme = value
-                Save()
-                if not is_lobby() and value then
-                    AutoVoteExtreme()
-                end
-            end,
-            SectionParent = GUIScriptsSection
+                Settings.auto_vote_extreme = value; Save()
+                if not is_lobby() and value then AutoVoteExtreme() end
+            end
         })
-        local Auto2XToggle = Main:CreateToggle({
-            Name = "Auto 2x Speedup",
-            CurrentValue = Settings.auto_2x,
+        local Auto2XToggle = AddToggle(MainSection, {
+            Text = "Auto 2x Speedup",
+            Default = Settings.auto_2x,
+            Flag = "auto_2x",
             Callback = function(value)
-                Settings.auto_2x = value
-                Save()
-
-                if not is_lobby() and value then
-                    AutoChangeSpeed()
-                end
-            end,
-            SectionParent = GUIScriptsSection
+                Settings.auto_2x = value; Save()
+                if not is_lobby() and value then AutoChangeSpeed() end
+            end
         })
-        local Auto3XToggle = Main:CreateToggle({
-            Name = "Auto 3x Speedup",
-            CurrentValue = Settings.auto_3x,
+        local Auto3XToggle = AddToggle(MainSection, {
+            Text = "Auto 3x Speedup",
+            Default = Settings.auto_3x,
+            Flag = "auto_3x",
             Callback = function(value)
-                Settings.auto_3x = value
-                Save()
-
-                if not is_lobby() and value then
-                    AutoChangeSpeed()
-                end
-            end,
-            SectionParent = GUIScriptsSection
+                Settings.auto_3x = value; Save()
+                if not is_lobby() and value then AutoChangeSpeed() end
+            end
         })
-        local GameEndScriptsSection = Main:CreateSection("Game End Scripts")
-        local AutoReplayToggle = Main:CreateToggle({
-            Name = "Auto Replay",
-            CurrentValue = Settings.auto_replay,
-            SectionParent = GameEndScriptsSection,
+        local AutoBattleToggle = AddToggle(MainSection, {
+            Text = "Auto Battle",
+            Default = Settings.auto_battle,
+            Flag = "auto_battle",
             Callback = function(value)
-                Settings.auto_replay = value
-                Save()
+                Settings.auto_battle = value; Save()
+                if not is_lobby() and value then AutoBattle() end
+            end
+        })
+        MainSection = Main:Full("Game End Scripts")
+        local AutoReplayToggle = AddToggle(MainSection, {
+            Text = "Auto Replay",
+            Default = Settings.auto_replay,
+            Flag = "auto_replay",
+            Callback = function(value)
+                Settings.auto_replay = value; Save()
                 if not is_lobby() and value then AutoReplay() end
             end
         })
-        local AutoNextStoryToggle = Main:CreateToggle({
-            Name = "Auto Next Story",
-            CurrentValue = Settings.auto_next_story,
-            SectionParent = GameEndScriptsSection,
+        local AutoNextStoryToggle = AddToggle(MainSection, {
+            Text = "Auto Next Story",
+            Default = Settings.auto_next_story,
+            Flag = "auto_next_story",
             Callback = function(value)
-                Settings.auto_next_story = value
-                Save()
+                Settings.auto_next_story = value; Save()
                 if not is_lobby() and value then AutoNextStory() end
-            end
-        })
-        local AutoBattleToggle = Main:CreateToggle({
-            Name = "Auto Battle",
-            CurrentValue = Settings.auto_battle,
-            SectionParent = GUIScriptsSection,
-            Callback = function(value)
-                Settings.auto_battle = value
-                Save()
-                if not is_lobby() and value then AutoBattle() end
             end
         })
     end
 
     local function MacroSettings()
-        local Macro = Window:CreateTab("Macro", 4483362458)
-        local MacrosSection = Macro:CreateSection("Macros")
-        local MacroProfileDropdown = Macro:OldCreateDropdown({
-            Name = "Selected Profile",
+        local Macro = Window:Tab("Macro")
+        local MacroSection
+        MacroSection = Macro:Full("Macros")
+
+        local MacroProfileDropdown = MacroSection:Dropdown({
+            Text = "Selected Profile",
             Options = MacroProfileList,
-            CurrentOption = Settings.macro_profile,
-            Callback = function(value)
+            Default = Settings.macro_profile,
+            Multi = false,
+            Flag = "macro_profile_dd",
+            Callback = function(options)
+                local value = options
                 Settings.macro_profile = value
-                if Macros[Settings.macro_profile] == nil then
-                    Macros[Settings.macro_profile] = {}
-                end
+                if Macros[Settings.macro_profile] == nil then Macros[Settings.macro_profile] = {} end
                 Save()
-            end,
-            SectionParent = MacrosSection
+            end
         })
-        local MacroProfileInfo = Macro:CreateParagraph({
+
+        local MacroProfileInfo = MacroSection:Paragraph({
             Title = "Current Profile Info",
-            Content = string.format("Waiting for information...\n"),
-            SectionParent = MacrosSection
+            Content = "Waiting for information...\n"
         })
         task.spawn(function()
             while MacroProfileInfo ~= nil do
-                if Macros[Settings.macro_profile]["Macro"] ~= nil and
-                    Macros[Settings.macro_profile]["Units"] ~= nil then
+                if Macros[Settings.macro_profile]["Macro"] ~= nil and Macros[Settings.macro_profile]["Units"] ~= nil then
                     MacroProfileInfo:Set({
                         Title = "Current Profile Info",
                         Content = string.format("Total Steps: %s\nUnits: %s",
-                                                tostring(
-                                                    #Macros[Settings.macro_profile]["Macro"]),
-                                                table.concat(
-                                                    get_keys(
-                                                        Macros[Settings.macro_profile]["Units"]),
-                                                    ", "))
+                            tostring(#Macros[Settings.macro_profile]["Macro"]),
+                            table.concat(get_keys(Macros[Settings.macro_profile]["Units"]), ", "))
                     })
                 end
                 task.wait()
             end
         end)
-        local ControlsSection = Macro:CreateSection("Controls")
-        local RecordMacroToggle = Macro:CreateToggle({
-            Name = "Record Macro",
-            CurrentValue = Settings.macro_record,
-            Callback = function(value)
-                Settings.macro_record = value
-                Save()
 
+        MacroSection = Macro:Full("Controls")
+        local RecordMacroToggle = AddToggle(MacroSection, {
+            Text = "Record Macro",
+            Default = Settings.macro_record,
+            Flag = "macro_record",
+            Callback = function(value)
+                Settings.macro_record = value; Save()
                 if not is_lobby() then
-                    if value then
-                        StartMacroRecord()
-                    else
-                        StopMacroRecord()
-                    end
+                    if value then StartMacroRecord() else StopMacroRecord() end
                 end
-            end,
-            SectionParent = ControlsSection
+            end
         })
-        local PlaybackMacroToggle = Macro:CreateToggle({
-            Name = "Playback Macro",
-            CurrentValue = Settings.macro_playback,
+        local PlaybackMacroToggle = AddToggle(MacroSection, {
+            Text = "Playback Macro",
+            Default = Settings.macro_playback,
+            Flag = "macro_playback",
             Callback = function(value)
-                Settings.macro_playback = value
-                Save()
-
+                Settings.macro_playback = value; Save()
                 if not is_lobby() then
                     if value then
-                        Rayfield:Notify({
-                            Title = "Macro Playback",
-                            Content = "Starting Macro Playback...",
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
+                        Library:Notify({Title = "Macro Playback", Text = "Starting Macro Playback...", Duration = 6.5, Icon = "info"})
                         StartMacroPlayback()
                     else
-                        Rayfield:Notify({
-                            Title = "Macro Playback",
-                            Content = "Stopping Macro Playback...",
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
+                        Library:Notify({Title = "Macro Playback", Text = "Stopping Macro Playback...", Duration = 6.5, Icon = "info"})
                         StopMacroPlayback()
                     end
                 end
-            end,
-            SectionParent = ControlsSection
+            end
         })
-        local MacroStatus = Macro:CreateParagraph({
-            Title = "Status",
-            Content = "Waiting for status...\n\n\n\n\n\n",
-            SectionParent = ControlsSection
-        })
+        local MacroStatus = MacroSection:Paragraph({Title = "Status", Content = "Waiting for status...\n\n\n\n\n\n"})
         task.spawn(function()
             while MacroStatus ~= nil do
                 if CurrentStep ~= nil then
-                    local MacroCurrentStep =
-                        Macros[Settings.macro_profile]["Macro"][CurrentStep]
-
+                    local MacroCurrentStep = Macros[Settings.macro_profile]["Macro"][CurrentStep]
                     if MacroCurrentStep ~= nil then
-                        local Target = nil
-                        local TargetName = nil
-                        local TargetIndex = nil
+                        local Target, TargetName, TargetIndex = nil, nil, nil
                         local Time = MacroCurrentStep["Time"]
-                        local Remote = nil
-                        local Parameters = nil
-
+                        local Remote, Parameters = nil, nil
                         if MacroCurrentStep["Target"] ~= nil then
                             Target = MacroCurrentStep["Target"]
-
-                            if Target ~= nil then
-                                TargetName = Target["Name"]
-                                TargetIndex = Target["Index"]
-                            end
+                            if Target ~= nil then TargetName = Target["Name"]; TargetIndex = Target["Index"] end
                         end
-
-                        if MacroCurrentStep["Remote"] ~= nil then
-                            Remote = MacroCurrentStep["Remote"][1]
-                        end
-
+                        if MacroCurrentStep["Remote"] ~= nil then Remote = MacroCurrentStep["Remote"][1] end
                         if MacroCurrentStep["Parameter"] ~= nil then
                             Parameters = ""
                             for k, v in pairs(MacroCurrentStep["Parameter"]) do
-                                Parameters =
-                                    Parameters .. tostring(k) .. ": " ..
-                                        tostring(v) .. "; "
+                                Parameters = Parameters .. tostring(k) .. ": " .. tostring(v) .. "; "
                             end
                         end
-
                         MacroStatus:Set({
                             Title = "Status",
                             Content = string.format(
                                 "Current Step: %s\nTarget: %s[%s]\nTime: %s\nGame Elapsed Time: %s\nAction: %s\nParameters: %s",
-                                tostring(CurrentStep), tostring(TargetName),
-                                tostring(TargetIndex), tostring(Time),
-                                tostring(ElapsedTime()), tostring(Remote),
-                                tostring(Parameters))
+                                tostring(CurrentStep), tostring(TargetName), tostring(TargetIndex),
+                                tostring(Time), tostring(ElapsedTime()), tostring(Remote), tostring(Parameters))
                         })
                     else
-                        MacroStatus:Set({
-                            Title = "Status",
-                            Content = string.format(
-                                "Error at step %s!\nGame Elapsed Time: %s",
-                                tostring(CurrentStep), tostring(ElapsedTime()))
-                        })
+                        MacroStatus:Set({Title = "Status", Content = string.format("Error at step %s!\nGame Elapsed Time: %s", tostring(CurrentStep), tostring(ElapsedTime()))})
                     end
                 else
-                    MacroStatus:Set({
-                        Title = "Status",
-                        Content = string.format(
-                            "Idle...\nGame Elapsed Time: %s",
-                            tostring(ElapsedTime()))
-                    })
+                    MacroStatus:Set({Title = "Status", Content = string.format("Idle...\nGame Elapsed Time: %s", tostring(ElapsedTime()))})
                 end
-
                 task.wait()
             end
         end)
-        local PreviousStepButton = Macro:CreateButton({
-            Name = "Previous Macro Step",
+        MacroSection:Button({
+            Text = "Previous Macro Step",
             Callback = function()
-                if CurrentStep ~= nil and CurrentStep > 0 then
-                    CurrentStep = CurrentStep - 1
-                else
-                    CurrentStep = 1
-                end
-            end,
-            SectionParent = ControlsSection
+                if CurrentStep ~= nil and CurrentStep > 0 then CurrentStep = CurrentStep - 1
+                else CurrentStep = 1 end
+            end
         })
-        local NextStepButton = Macro:CreateButton({
-            Name = "Next Macro Step",
+        MacroSection:Button({
+            Text = "Next Macro Step",
             Callback = function()
-                if (CurrentStep == nil or CurrentStep < 0) and
-                    #Macros[Settings.macro_profile]["Macro"] > 0 then
+                if (CurrentStep == nil or CurrentStep < 0) and #Macros[Settings.macro_profile]["Macro"] > 0 then
                     CurrentStep = 1
-                elseif CurrentStep ~= nil and CurrentStep > 0 and CurrentStep <
-                    #Macros[Settings.macro_profile]["Macro"] then
+                elseif CurrentStep ~= nil and CurrentStep > 0 and CurrentStep < #Macros[Settings.macro_profile]["Macro"] then
                     CurrentStep = CurrentStep + 1
                 end
-            end,
-            SectionParent = ControlsSection
-        })
-        local ResetStepButton = Macro:CreateButton({
-            Name = "Reset Macro Step",
-            Callback = function()
-                if CurrentStep ~= nil then CurrentStep = nil end
-            end,
-            SectionParent = ControlsSection
-        })
-        local ProfileManagementSection =
-            Macro:CreateSection("Profile Management")
-        local ProfileNameInput = ""
-        Macro:CreateInput({
-            Name = "New macro profile name",
-            PlaceholderText = "Default Profile",
-            RemoveTextAfterFocusLost = false,
-            Callback = function(text) ProfileNameInput = text end,
-            SectionParent = ProfileManagementSection
-        })
-        local CreateNewMacroProfileButton =
-            Macro:CreateButton({
-                Name = "Create new macro profile",
-                Callback = function()
-                    local profile_name = ProfileNameInput
-
-                    if string.match(profile_name, '[^%w%s]') ~= nil then
-                        Rayfield:Notify({
-                            Title = "Macro",
-                            Content = string.format(
-                                "%s contains illegal characters!", profile_name),
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
-                    elseif Macros[profile_name] ~= nil then
-                        Rayfield:Notify({
-                            Title = "Macro",
-                            Content = string.format("Macro %s already exists!",
-                                                    profile_name),
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
-                    else
-                        Macros[profile_name] = DeepCopy(
-                                                   IndividualMacroDefaultSettings)
-                        Settings.macro_profile = profile_name
-                        Save()
-                        table.insert(MacroProfileList, profile_name)
-                        MacroProfileDropdown:Refresh(MacroProfileList,
-                                                     Settings.macro_profile)
-                        MacroProfileDropdown:Set(Settings.macro_profile)
-                        Rayfield:Notify({
-                            Title = "Macro",
-                            Content = string.format("Created macro %s!",
-                                                    profile_name),
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
-                    end
-                end,
-                SectionParent = ProfileManagementSection
-            })
-        Macro:CreateInput({
-            Name = "Import Macro",
-            PlaceholderText = "Place Link Here",
-            RemoveTextAfterFocusLost = false,
-            Callback = function(text) linkport = text end,
-            SectionParent = ProfileManagementSection
-        })
-        Macro:CreateButton({
-            Name = "Import Start",
-            Callback = function() importMacro(linkport) end,
-            SectionParent = ProfileManagementSection
-        })
-        local DeleteMacroProfileButton =
-            Macro:CreateButton({
-                Name = "Delete selected profile",
-                Callback = function()
-                    if #MacroProfileList == 1 then
-                        Rayfield:Notify({
-                            Title = "Macro",
-                            Content = "Cannot remove last macro in list!",
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
-                        return
-                    else
-                        Rayfield:Notify({
-                            Title = "Macro",
-                            Content = "Are you sure you want to delete the current profile?",
-                            Duration = 6.5,
-                            Image = 4483362458,
-                            Actions = {
-                                Ignore = {
-                                    Name = "Yes",
-                                    Callback = function()
-                                        local removed_profile_name =
-                                            Settings.macro_profile
-                                        delfile(
-                                            folder_name .. "\\" ..
-                                                Settings.macro_profile ..
-                                                ".json")
-                                        Macros[Settings.macro_profile] = nil
-                                        table.remove(MacroProfileList,
-                                                     table.find(
-                                                         MacroProfileList,
-                                                         removed_profile_name))
-                                        for _, v in pairs(MacroProfileList) do
-                                            if v ~= nil then
-                                                Settings.macro_profile = v
-                                                break
-                                            end
-                                        end
-                                        Save()
-                                        MacroProfileDropdown:Refresh(
-                                            MacroProfileList,
-                                            Settings.macro_profile)
-                                        MacroProfileDropdown:Set(
-                                            Settings.macro_profile)
-                                        Rayfield:Notify({
-                                            Title = "Macro",
-                                            Content = string.format(
-                                                "Successfully removed macro profile %s!",
-                                                removed_profile_name),
-                                            Duration = 6.5,
-                                            Image = 4483362458
-                                        })
-                                    end
-                                }
-                            }
-                        })
-                    end
-                end,
-                SectionParent = ProfileManagementSection
-            })
-        Macro:CreateInput({
-            Name = "Import Settings",
-            PlaceholderText = "Place Link Here",
-            RemoveTextAfterFocusLost = false,
-            Callback = function(text) linkport2 = text end,
-            SectionParent = ProfileManagementSection
-        })
-        Macro:CreateButton({
-            Name = "Import Start",
-            Callback = function() importSettings(linkport2) end,
-            SectionParent = ProfileManagementSection
-        })
-        local ClearMacroProfileButton = Macro:CreateButton({
-            Name = "Clear all macro data on selected profile",
-            Callback = function()
-                Rayfield:Notify({
-                    Title = "Macro",
-                    Content = "Are you sure you want to clear the current profile?",
-                    Duration = 6.5,
-                    Image = 4483362458,
-                    Actions = {
-                        Ignore = {
-                            Name = "Yes",
-                            Callback = function()
-                                Macros[Settings.macro_profile] = DeepCopy(
-                                                                     IndividualMacroDefaultSettings)
-                                CurrentStep = nil
-                                Save()
-                                Rayfield:Notify({
-                                    Title = "Macro",
-                                    Content = "Selected profile has been cleared.",
-                                    Duration = 6.5,
-                                    Image = 4483362458
-                                })
-                            end
-                        }
-                    }
-                })
-            end,
-            SectionParent = ProfileManagementSection
-        })
-        local RecordingOptionsSection = Macro:CreateSection("Recording Options")
-        Macro:CreateParagraph({
-            Title = "Recording Options",
-            Content = "These settings will affect any recorded macro and should not be changed unless you have any issues with macro recording. Check if you have any issues using playback offset first before playing with recording offset. This option, however, could be useful if you load in after the game already started.",
-            SectionParent = RecordingOptionsSection
-        })
-        -- TODO: Convert all sliders to input or make sliders mobile friendly.
-        --[[Macro:CreateInput({
-            Name = "Time Offset",
-            Info = "Positive time offset means that actions will performed earlier. Negative time offset means that actions will be performed later."
-            CurrentValue = Settings.macro_record_time_offset,
-            Callback = function(value)
-                Settings.macro_record_time_offset = value
-                Save()
             end
-        })]] --
-        Macro:CreateSlider({
-            Name = "Time Offset",
-            Range = {-10, 10},
-            Increment = 0.1,
-            CurrentValue = Settings.macro_record_time_offset,
-            Callback = function(value)
-                Settings.macro_record_time_offset = value
-                Save()
-            end,
-            SectionParent = RecordingOptionsSection
         })
-        local PlaybackOptionsSection = Macro:CreateSection("Playback Options")
-        Macro:CreateParagraph({
-            Title = "Playback Options",
-            Content = "These settings will only apply during macro playback and will not affect any previously recorded macros. Changing time offset here can affect how a recorded macro is played back and fix issues with playing back macro recorded with a different offset.",
-            SectionParent = PlaybackOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Money Tracking",
-            Info = "Waits until you have enough $ before calling remote.",
-            CurrentValue = Settings.macro_money_tracking,
-            Callback = function(value)
-                Settings.macro_money_tracking = value
-                Save()
-            end,
-            SectionParent = PlaybackOptionsSection
-        })
-        Macro:CreateSlider({
-            Name = "Time Offset",
-            Range = {-10, 10},
-            Increment = 0.1,
-            CurrentValue = Settings.macro_playback_time_offset,
-            Callback = function(value)
-                Settings.macro_playback_time_offset = value
-                Save()
-            end,
-            SectionParent = PlaybackOptionsSection
-        })
-        Macro:CreateSlider({
-            Name = "Magnitude",
-            Info = "Finds units with less than or equal magnitude to the slider.",
-            Range = {0, 2},
-            Increment = 0.01,
-            CurrentValue = Settings.macro_magnitude,
-            Callback = function(value)
-                Settings.macro_magnitude = value
-                Save()
-            end,
-            SectionParent = PlaybackOptionsSection
-        })
-        Macro:CreateSlider({
-            Name = "Attempts before action skip",
-            Info = "# of attempts finding unit within magnitude before skipping action.",
-            Range = {0, 120},
-            Increment = 1,
-            CurrentValue = Settings.macro_playback_search_attempts,
-            Callback = function(value)
-                Settings.macro_playback_search_attempts = value
-                Save()
-            end,
-            SectionParent = PlaybackOptionsSection
-        })
-        Macro:CreateSlider({
-            Name = "Action skip search delay",
-            Info = "Delay for the unit search loop.",
-            Range = {0, 1},
-            Increment = 0.01,
-            CurrentValue = Settings.macro_playback_search_delay,
-            Callback = function(value)
-                Settings.macro_playback_search_delay = value
-                Save()
-            end,
-            SectionParent = PlaybackOptionsSection
-        })
-        local MacroOptionsSection = Macro:CreateSection("Macro Options")
-        Macro:CreateParagraph({
-            Title = "Macro Options",
-            Content = "You should leave all of these toggles on, otherwise your macro will not work properly. However, if you don't want certain actions being recorded or played back, you can toggle those options to disable that type of action.",
-            SectionParent = MacroOptionsSection
-        })
-        Macro:OldCreateDropdown({
-            Name = "Elapsed Time Mode",
-            Options = {"Version 2", "Version 1"},
-            CurrentOption = Settings.macro_timer_version,
-            Callback = function(Option)
-                Settings.macro_timer_version = Option
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Summon Unit",
-            CurrentValue = Settings.macro_summon,
-            Callback = function(value)
-                Settings.macro_summon = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Sell Unit",
-            CurrentValue = Settings.macro_sell,
-            Callback = function(value)
-                Settings.macro_sell = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Upgrade Unit",
-            CurrentValue = Settings.macro_upgrade,
-            Callback = function(value)
-                Settings.macro_upgrade = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Change Unit Priority",
-            CurrentValue = Settings.macro_priority,
-            Callback = function(value)
-                Settings.macro_priority = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Unit Ability",
-            CurrentValue = Settings.macro_ability,
-            Callback = function(value)
-                Settings.macro_ability = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Unit Auto Ability",
-            CurrentValue = Settings.macro_auto_ability,
-            Callback = function(value)
-                Settings.macro_auto_ability = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Skip Wave",
-            CurrentValue = Settings.macro_skipwave,
-            Callback = function(value)
-                Settings.macro_skipwave = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Auto Skip Wave",
-            CurrentValue = Settings.macro_autoskipwave,
-            Callback = function(value)
-                Settings.macro_autoskipwave = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        Macro:CreateToggle({
-            Name = "Speed Change",
-            CurrentValue = Settings.macro_speedchange,
-            Callback = function(value)
-                Settings.macro_speedchange = value
-                Save()
-            end,
-            SectionParent = MacroOptionsSection
-        })
-        local AbilityBlacklistConfigurationSection =
-            Macro:CreateSection("Ability Blacklist Configuration")
-        Macro:CreateParagraph({
-            Title = "Ability Blacklist",
-            Content = "The ability blacklist allows you to filter out which characters you want to not have the macro record and/or playback. Usually this blacklist should contain all units that are being used in the auto unit buffing gameplay script.",
-            SectionParent = AbilityBlacklistConfigurationSection
+        MacroSection:Button({
+            Text = "Reset Macro Step",
+            Callback = function() if CurrentStep ~= nil then CurrentStep = nil end end
         })
 
-        local AbilityBlacklistDropdown
-
-        if #Settings.macro_ability_blacklist > 0 then
-            AbilityBlacklistDropdown = Macro:OldCreateDropdown({
-                Name = "Blacklisted Units",
-                Options = Settings.macro_ability_blacklist,
-                CurrentOption = Settings.macro_ability_blacklist[#Settings.macro_ability_blacklist],
-                Callback = function(Option) end,
-                SectionParent = AbilityBlacklistConfigurationSection
-            })
-        else
-            AbilityBlacklistDropdown = Macro:OldCreateDropdown({
-                Name = "Blacklisted Units",
-                Options = {"None"},
-                CurrentOption = "None",
-                Callback = function(Option) end,
-                SectionParent = AbilityBlacklistConfigurationSection
-            })
-        end
-
-        local AbilityBlacklistUnitListDropdown =
-            Macro:OldCreateDropdown({
-                Name = "Unit List",
-                Options = {"None"},
-                CurrentOption = "None",
-                Callback = function(Option) end,
-                SectionParent = AbilityBlacklistConfigurationSection
-            })
-
-        if #UnitList > 0 then
-            AbilityBlacklistUnitListDropdown:Refresh(UnitList, UnitList[1])
-            AbilityBlacklistUnitListDropdown:Set(UnitList[1])
-        end
-
-        local AbilityBlacklistAdd = Macro:CreateButton({
-            Name = "Add selected unit from unit list to ability blacklist",
+        MacroSection = Macro:Full("Profile Management")
+        local ProfileNameInput = ""
+        MacroSection:Input({
+            Text = "New macro profile name",
+            Placeholder = "Default Profile",
+            Flag = "new_profile_name",
+            Callback = function(text) ProfileNameInput = text end
+        })
+        MacroSection:Button({
+            Text = "Create new macro profile",
             Callback = function()
-                local v = AbilityBlacklistUnitListDropdown.CurrentOption
+                local profile_name = ProfileNameInput
+                if string.match(profile_name, '[^%w%s]') ~= nil then
+                    Library:Notify({Title = "Macro", Text = string.format("%s contains illegal characters!", profile_name), Duration = 6.5, Icon = "info"})
+                elseif Macros[profile_name] ~= nil then
+                    Library:Notify({Title = "Macro", Text = string.format("Macro %s already exists!", profile_name), Duration = 6.5, Icon = "info"})
+                else
+                    Macros[profile_name] = DeepCopy(IndividualMacroDefaultSettings)
+                    Settings.macro_profile = profile_name
+                    Save()
+                    table.insert(MacroProfileList, profile_name)
+
+                    MacroProfileDropdown:SetOptions(MacroProfileList)
+                    MacroProfileDropdown:Set(Settings.macro_profile)
+                    Library:Notify({Title = "Macro", Text = string.format("Created macro %s!", profile_name), Duration = 6.5, Icon = "info"})
+                end
+            end
+        })
+        MacroSection:Input({
+            Text = "Import Macro",
+            Placeholder = "Place Link Here",
+            Flag = "import_macro_url",
+            Callback = function(text) linkport = text end
+        })
+        MacroSection:Button({Text = "Import Start", Callback = function() importMacro(linkport) end})
+        MacroSection:Button({
+            Text = "Delete selected profile",
+            Callback = function()
+                if #MacroProfileList == 1 then
+                    Library:Notify({Title = "Macro", Text = "Cannot remove last macro in list!", Duration = 6.5, Icon = "info"})
+                    return
+                end
+                -- Remove the selected profile and update the Facility dropdown.
+                local removed_profile_name = Settings.macro_profile
+                delfile(folder_name .. "\\" .. Settings.macro_profile .. ".json")
+                Macros[Settings.macro_profile] = nil
+                table.remove(MacroProfileList, table.find(MacroProfileList, removed_profile_name))
+                for _, v in pairs(MacroProfileList) do
+                    if v ~= nil then Settings.macro_profile = v; break end
+                end
+                Save()
+                MacroProfileDropdown:SetOptions(MacroProfileList)
+                MacroProfileDropdown:Set(Settings.macro_profile)
+                Library:Notify({Title = "Macro", Text = string.format("Successfully removed macro profile %s!", removed_profile_name), Duration = 6.5, Icon = "info"})
+            end
+        })
+        MacroSection:Input({
+            Text = "Import Settings",
+            Placeholder = "Place Link Here",
+            Flag = "import_settings_url",
+            Callback = function(text) linkport2 = text end
+        })
+        MacroSection:Button({Text = "Import Start", Callback = function() importSettings(linkport2) end})
+        MacroSection:Button({
+            Text = "Clear all macro data on selected profile",
+            Callback = function()
+                Macros[Settings.macro_profile] = DeepCopy(IndividualMacroDefaultSettings)
+                CurrentStep = nil; Save()
+                Library:Notify({Title = "Macro", Text = "Selected profile has been cleared.", Duration = 6.5, Icon = "info"})
+            end
+        })
+
+        MacroSection = Macro:Full("Recording Options")
+        MacroSection:Paragraph({
+            Title = "Recording Options",
+            Content = "These settings will affect any recorded macro and should not be changed unless you have any issues with macro recording. Check if you have any issues using playback offset first before playing with recording offset."
+        })
+        MacroSection:Slider({
+            Text = "Time Offset",
+            Min = -10, Max = 10,
+            Step = 0.1, Decimals = 1,
+            Default = Settings.macro_record_time_offset,
+            Flag = "macro_record_time_offset",
+            Callback = function(value) Settings.macro_record_time_offset = value; Save() end
+        })
+
+        MacroSection = Macro:Full("Playback Options")
+        MacroSection:Paragraph({
+            Title = "Playback Options",
+            Content = "These settings will only apply during macro playback and will not affect any previously recorded macros."
+        })
+        AddToggle(MacroSection, {
+            Text = "Money Tracking",
+            Default = Settings.macro_money_tracking,
+            Flag = "macro_money_tracking",
+            Callback = function(value) Settings.macro_money_tracking = value; Save() end
+        })
+        MacroSection:Slider({
+            Text = "Time Offset",
+            Min = -10, Max = 10,
+            Step = 0.1, Decimals = 1,
+            Default = Settings.macro_playback_time_offset,
+            Flag = "macro_playback_time_offset",
+            Callback = function(value) Settings.macro_playback_time_offset = value; Save() end
+        })
+        MacroSection:Slider({
+            Text = "Magnitude",
+            Min = 0, Max = 2,
+            Step = 0.01, Decimals = 2,
+            Default = Settings.macro_magnitude,
+            Flag = "macro_magnitude",
+            Callback = function(value) Settings.macro_magnitude = value; Save() end
+        })
+        MacroSection:Slider({
+            Text = "Attempts before action skip",
+            Min = 0, Max = 120,
+            Step = 1, Decimals = 0,
+            Default = Settings.macro_playback_search_attempts,
+            Flag = "macro_playback_search_attempts",
+            Callback = function(value) Settings.macro_playback_search_attempts = value; Save() end
+        })
+        MacroSection:Slider({
+            Text = "Action skip search delay",
+            Min = 0, Max = 1,
+            Step = 0.01, Decimals = 2,
+            Default = Settings.macro_playback_search_delay,
+            Flag = "macro_playback_search_delay",
+            Callback = function(value) Settings.macro_playback_search_delay = value; Save() end
+        })
+
+        MacroSection = Macro:Full("Macro Options")
+        MacroSection:Paragraph({
+            Title = "Macro Options",
+            Content = "You should leave all of these toggles on, otherwise your macro will not work properly."
+        })
+        MacroSection:Dropdown({
+            Text = "Elapsed Time Mode",
+            Options = {"Version 2", "Version 1"},
+            Default = Settings.macro_timer_version,
+            Multi = false,
+            Flag = "macro_timer_version",
+            Callback = function(options)
+                Settings.macro_timer_version = options; Save()
+            end
+        })
+        AddToggle(MacroSection, {Text = "Summon Unit", Default = Settings.macro_summon, Flag = "macro_summon", Callback = function(v) Settings.macro_summon = v; Save() end})
+        AddToggle(MacroSection, {Text = "Sell Unit", Default = Settings.macro_sell, Flag = "macro_sell", Callback = function(v) Settings.macro_sell = v; Save() end})
+        AddToggle(MacroSection, {Text = "Upgrade Unit", Default = Settings.macro_upgrade, Flag = "macro_upgrade", Callback = function(v) Settings.macro_upgrade = v; Save() end})
+        AddToggle(MacroSection, {Text = "Change Unit Priority", Default = Settings.macro_priority, Flag = "macro_priority", Callback = function(v) Settings.macro_priority = v; Save() end})
+        AddToggle(MacroSection, {Text = "Unit Ability", Default = Settings.macro_ability, Flag = "macro_ability", Callback = function(v) Settings.macro_ability = v; Save() end})
+        AddToggle(MacroSection, {Text = "Unit Auto Ability", Default = Settings.macro_auto_ability, Flag = "macro_auto_ability", Callback = function(v) Settings.macro_auto_ability = v; Save() end})
+        AddToggle(MacroSection, {Text = "Skip Wave", Default = Settings.macro_skipwave, Flag = "macro_skipwave", Callback = function(v) Settings.macro_skipwave = v; Save() end})
+        AddToggle(MacroSection, {Text = "Auto Skip Wave", Default = Settings.macro_autoskipwave, Flag = "macro_autoskipwave", Callback = function(v) Settings.macro_autoskipwave = v; Save() end})
+        AddToggle(MacroSection, {Text = "Speed Change", Default = Settings.macro_speedchange, Flag = "macro_speedchange", Callback = function(v) Settings.macro_speedchange = v; Save() end})
+
+        MacroSection = Macro:Full("Ability Blacklist Configuration")
+        MacroSection:Paragraph({
+            Title = "Ability Blacklist",
+            Content = "The ability blacklist allows you to filter out which characters you want to not have the macro record and/or playback."
+        })
+
+        local blacklistOptions = #Settings.macro_ability_blacklist > 0 and Settings.macro_ability_blacklist or {"None"}
+        local AbilityBlacklistDropdown = MacroSection:Dropdown({
+            Text = "Blacklisted Units",
+            Options = blacklistOptions,
+            Default = blacklistOptions[#blacklistOptions],
+            Multi = false,
+            Search = true,
+            Flag = "ability_blacklist_selected",
+            Callback = function(options) end
+        })
+
+        local unitListOptions = #UnitList > 0 and UnitList or {"None"}
+        local AbilityBlacklistUnitListDropdown = MacroSection:Dropdown({
+            Text = "Unit List",
+            Options = unitListOptions,
+            Default = unitListOptions[1],
+            Multi = false,
+            Search = true,
+            Flag = "ability_blacklist_unitlist",
+            Callback = function(options) end
+        })
+
+        MacroSection:Button({
+            Text = "Add selected unit from unit list to ability blacklist",
+            Callback = function()
+                local v = AbilityBlacklistUnitListDropdown:Get()
+                if type(v) == "table" then v = v[1] end
+                    if type(v) ~= "string" or not table.find(UnitList, v) then return end
                 if table.find(Settings.macro_ability_blacklist, v) == nil then
                     table.insert(Settings.macro_ability_blacklist, v)
                     Save()
-                    AbilityBlacklistDropdown:Refresh(
-                        Settings.macro_ability_blacklist, v)
+                    AbilityBlacklistDropdown:SetOptions(Settings.macro_ability_blacklist)
                     AbilityBlacklistDropdown:Set(v)
-                    Rayfield:Notify({
-                        Title = "Ability Blacklist",
-                        Content = string.format(
-                            "Unit %s added to ability blacklist", v),
-                        Duration = 6.5,
-                        Image = 4483362458
-                    })
+                    Library:Notify({Title = "Ability Blacklist", Text = string.format("Unit %s added to ability blacklist", v), Duration = 6.5, Icon = "info"})
                 else
-                    Rayfield:Notify({
-                        Title = "Ability Blacklist",
-                        Content = "Unit already exists in ability blacklist",
-                        Duration = 6.5,
-                        Image = 4483362458
-                    })
+                    Library:Notify({Title = "Ability Blacklist", Text = "Unit already exists in ability blacklist", Duration = 6.5, Icon = "info"})
                 end
-            end,
-            SectionParent = AbilityBlacklistConfigurationSection
+            end
         })
-
-        local AbilityBlacklistDelete = Macro:CreateButton({
-            Name = "Delete selected blacklisted unit from ability blacklist",
+        MacroSection:Button({
+            Text = "Delete selected blacklisted unit from ability blacklist",
             Callback = function()
-                local v = AbilityBlacklistDropdown.CurrentOption
+                local v = AbilityBlacklistDropdown:Get()
+                if type(v) == "table" then v = v[1] end
                 local idx = table.find(Settings.macro_ability_blacklist, v)
                 if idx ~= nil then
                     table.remove(Settings.macro_ability_blacklist, idx)
                     Save()
-                    AbilityBlacklistDropdown:Refresh(
-                        Settings.macro_ability_blacklist,
-                        Settings.macro_ability_blacklist[#Settings.macro_ability_blacklist])
-                    AbilityBlacklistDropdown:Set(
-                        Settings.macro_ability_blacklist[#Settings.macro_ability_blacklist])
-                    Rayfield:Notify({
-                        Title = "Ability Blacklist",
-                        Content = string.format(
-                            "Unit %s removed from ability blacklist", v),
-                        Duration = 6.5,
-                        Image = 4483362458
-                    })
+                    local newList = #Settings.macro_ability_blacklist > 0 and Settings.macro_ability_blacklist or {"None"}
+                    AbilityBlacklistDropdown:SetOptions(newList)
+                    AbilityBlacklistDropdown:Set(newList[#newList])
+                    Library:Notify({Title = "Ability Blacklist", Text = string.format("Unit %s removed from ability blacklist", v), Duration = 6.5, Icon = "info"})
                 else
-                    Rayfield:Notify({
-                        Title = "Ability Blacklist",
-                        Content = string.format(
-                            "Unit %s does not exist in ability blacklist", v),
-                        Duration = 6.5,
-                        Image = 4483362458
-                    })
+                    Library:Notify({Title = "Ability Blacklist", Text = string.format("Unit %s does not exist in ability blacklist", v), Duration = 6.5, Icon = "info"})
                 end
-            end,
-            SectionParent = AbilityBlacklistConfigurationSection
+            end
         })
 
         if not is_lobby() then
-            local OffsetSettingsSection = Macro:CreateSection("Offset Settings")
-            Macro:CreateParagraph({
+            MacroSection = Macro:Full("Offset Settings")
+            MacroSection:Paragraph({
                 Title = "CAUTION",
-                Content = "This is a experimental feature that allows you to shift all unit positions to their new locations if the map coordinates have changed due to an update. However, you need to have saved the previous spawn position to the macro profile before the game update for this to work. All changes are irreversible, so please use with caution.",
-                SectionParent = OffsetSettingsSection
+                Content = "This is an experimental feature. All changes are irreversible, so please use with caution."
             })
-            local SetMacroMapButton = Macro:CreateButton({
-                Name = "Save current spawn position to selected macro profile",
+            MacroSection:Button({
+                Text = "Save current spawn position to selected macro profile",
                 Callback = function()
-                    Macros[Settings.macro_profile]["Map"] = {
-                        ["SpawnLocation"] = tostring(
-                            game:GetService("Workspace").SpawnLocation.CFrame)
-                    }
+                    Macros[Settings.macro_profile]["Map"] = {["SpawnLocation"] = tostring(game:GetService("Workspace").SpawnLocation.CFrame)}
                     Save()
-                    Rayfield:Notify({
-                        Title = "Macro",
-                        Content = "Current map has been set to macro profile.",
-                        Duration = 6.5,
-                        Image = 4483362458
-                    })
-                end,
-                SectionParent = OffsetSettingsSection
+                    Library:Notify({Title = "Macro", Text = "Current map has been set to macro profile.", Duration = 6.5, Icon = "info"})
+                end
             })
-            local SetMacroMapOffsetButton =
-                Macro:CreateButton({
-                    Name = "Update placement locations, if game shifted map positions.",
-                    Callback = function()
-                        if Macros[Settings.macro_profile]["Map"] ~= nil then
-                            local SpawnLocation =
-                                Macros[Settings.macro_profile]["Map"]["SpawnLocation"]
-
-                            if SpawnLocation ~= nil then
-                                local offset =
-                                    game:GetService("Workspace").SpawnLocation
-                                        .CFrame *
-                                        StringToCFrame(SpawnLocation):Inverse()
-
-                                for _, v in pairs(
-                                                Macros[Settings.macro_profile]["Units"]) do
-                                    v["Position"] = v["Position"] * offset
-                                end
+            MacroSection:Button({
+                Text = "Update placement locations, if game shifted map positions.",
+                Callback = function()
+                    if Macros[Settings.macro_profile]["Map"] ~= nil then
+                        local SpawnLocation = Macros[Settings.macro_profile]["Map"]["SpawnLocation"]
+                        if SpawnLocation ~= nil then
+                            local offset = game:GetService("Workspace").SpawnLocation.CFrame * StringToCFrame(SpawnLocation):Inverse()
+                            for _, v in pairs(Macros[Settings.macro_profile]["Units"]) do
+                                v["Position"] = v["Position"] * offset
                             end
                         end
-
-                        Macros[Settings.macro_profile]["Map"] = {
-                            ["SpawnLocation"] = tostring(
-                                game:GetService("Workspace").SpawnLocation
-                                    .CFrame)
-                        }
-                        Save()
-                    end,
-                    SectionParent = OffsetSettingsSection
-                })
+                    end
+                    Macros[Settings.macro_profile]["Map"] = {["SpawnLocation"] = tostring(game:GetService("Workspace").SpawnLocation.CFrame)}
+                    Save()
+                end
+            })
         end
     end
 
     local function AdvancedSettings()
-        local AdvancedSettingsTab = Window:CreateTab("Advanced Settings",
-                                                     4483362458)
+        local AdvancedSettingsTab = Window:Tab("Advanced Settings")
+        local AdvancedSettingsTabSection
+
         local function AutoUnitBuffingSettings()
-            local AutoUnitBuffingSection =
-                AdvancedSettingsTab:CreateSection("Auto Unit Buffing Settings")
-            AdvancedSettingsTab:CreateParagraph({
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Auto Unit Buffing Settings")
+            AdvancedSettingsTabSection:Paragraph({
                 Title = "Auto Unit Buffing Settings",
-                Content = "These settings allow you to add and remove units that are used for the auto unit buffing gameplay script. In order for changes to take effect, you need to restart the auto unit buffing script after adding or removing the unit from the auto unit buffing.",
-                SectionParent = AutoUnitBuffingSection
+                Content = "Select a configured unit under Units, click Edit Auto Unit Buffing Settings, change the fields, then Save Auto Unit Buffing Settings. Existing units read edits on a subsequent buff loop; newly added units require a rejoin and script execution."
             })
-
             local AutoBuffUnitList = get_keys(Settings.auto_buff_units)
-            local AutoBuffSelectedUnitInformation =
-                AdvancedSettingsTab:CreateParagraph({
-                    Title = "Selected Unit Information",
-                    Content = "Waiting for selected unit...\n",
-                    SectionParent = AutoUnitBuffingSection
-                })
+            local AutoBuffSelectedUnitInformation = AdvancedSettingsTabSection:Paragraph({Title = "Selected Unit Information", Content = "Waiting for selected unit...\n"})
 
-            local function AutoBuffDropdownCallback(value)
-                if AutoBuffSelectedUnitInformation ~= nil and
-                    Settings.auto_buff_units[value] ~= nil then
+            local function AutoBuffDropdownCallback(options)
+                local value = type(options) == "table" and options[1] or options
+                if AutoBuffSelectedUnitInformation ~= nil and Settings.auto_buff_units[value] ~= nil then
                     local content = ""
-
                     for k, v in pairs(Settings.auto_buff_units[value]) do
                         if type(v) == "table" then
-                            content = content ..
-                                          string.format("%s: %s\n", tostring(k),
-                                                        table.concat(v, ", "))
+                            content = content .. string.format("%s: %s\n", tostring(k), table.concat(v, ", "))
                         else
-                            content = content ..
-                                          string.format("%s: %s\n", tostring(k),
-                                                        tostring(v))
+                            content = content .. string.format("%s: %s\n", tostring(k), tostring(v))
                         end
                     end
-
-                    AutoBuffSelectedUnitInformation:Set({
-                        Title = "Selected Unit Information",
-                        Content = content
-                    })
+                    AutoBuffSelectedUnitInformation:Set({Title = "Selected Unit Information", Content = content})
                 end
             end
 
-            local AutoBuffDropdown
+            local autoBuffListOptions = #AutoBuffUnitList > 0 and AutoBuffUnitList or {"None"}
+            local AutoBuffDropdown = AdvancedSettingsTabSection:Dropdown({
+                Text = "Units",
+                Options = autoBuffListOptions,
+                Default = autoBuffListOptions[#autoBuffListOptions],
+                Multi = false,
+                Search = true,
+            Flag = "autobuff_selected",
+                Callback = AutoBuffDropdownCallback
+            })
 
             if #AutoBuffUnitList > 0 then
-                AutoBuffDropdown = AdvancedSettingsTab:OldCreateDropdown({
-                    Name = "Units",
-                    Options = AutoBuffUnitList,
-                    CurrentOption = AutoBuffUnitList[#AutoBuffUnitList],
-                    Callback = AutoBuffDropdownCallback,
-                    SectionParent = AutoUnitBuffingSection
-                })
+                local firstUnit = AutoBuffUnitList[#AutoBuffUnitList]
                 AutoBuffSelectedUnitInformation:Set({
                     Title = "Selected Unit Information",
                     Content = string.format(
                         "Mode: %s\nChecks: %s\nAbility Type: %s\nAbility Name: %s\nTime: %s",
-                        Settings.auto_buff_units[AutoBuffDropdown.CurrentOption]["Mode"],
-                        table.concat(
-                            Settings.auto_buff_units[AutoBuffDropdown.CurrentOption]["Checks"],
-                            ", "),
-                        Settings.auto_buff_units[AutoBuffDropdown.CurrentOption]["Ability Type"],
-                        tostring(
-                            Settings.auto_buff_units[AutoBuffDropdown.CurrentOption]["Ability Name"]),
-                        tostring(
-                            Settings.auto_buff_units[AutoBuffDropdown.CurrentOption]["Time"]))
-                })
-            else
-                AutoBuffDropdown = AdvancedSettingsTab:OldCreateDropdown({
-                    Name = "Units",
-                    Options = {"None"},
-                    CurrentOption = "None",
-                    Callback = AutoBuffDropdownCallback,
-                    SectionParent = AutoUnitBuffingSection
+                        Settings.auto_buff_units[firstUnit]["Mode"],
+                        table.concat(Settings.auto_buff_units[firstUnit]["Checks"], ", "),
+                        Settings.auto_buff_units[firstUnit]["Ability Type"],
+                        tostring(Settings.auto_buff_units[firstUnit]["Ability Name"]),
+                        tostring(Settings.auto_buff_units[firstUnit]["Time"]))
                 })
             end
 
-            local AutoBuffUnitListDropdown =
-                AdvancedSettingsTab:OldCreateDropdown({
-                    Name = "Unit List",
-                    Options = {"None"},
-                    CurrentOption = "None",
-                    Callback = function(Option) end,
-                    SectionParent = AutoUnitBuffingSection
-                })
-            if #UnitList > 0 then
-                AutoBuffUnitListDropdown:Refresh(UnitList, UnitList[1])
-                AutoBuffUnitListDropdown:Set(UnitList[1])
-            end
-            local AutoBuffModeDropdown =
-                AdvancedSettingsTab:OldCreateDropdown({
-                    Name = "Buffing Mode",
-                    Options = {"Box", "Pair", "Cycle"},
-                    CurrentOption = "Box",
-                    Callback = function(Option) end,
-                    SectionParent = AutoUnitBuffingSection
-                })
-            local AutoBuffChecks = AdvancedSettingsTab:CreateDropdown({
-                Name = "Auto Buff Checks",
+            local unitListOpts = #UnitList > 0 and UnitList or {"None"}
+            local AutoBuffUnitListDropdown = AdvancedSettingsTabSection:Dropdown({
+                Text = "Unit List",
+                Options = unitListOpts,
+                Default = unitListOpts[1],
+                Multi = false,
+                Search = true,
+            Flag = "autobuff_unitlist",
+                Callback = function(options) end
+            })
+
+            local AutoBuffModeDropdown = AdvancedSettingsTabSection:Dropdown({
+                Text = "Buffing Mode",
+                Options = {"Box", "Pair", "Cycle", "Spam"},
+                Default = "Box",
+                Multi = false,
+                Flag = "autobuff_mode",
+                Callback = function(options) end
+            })
+
+            -- Multi-select for buff checks
+            local AutoBuffChecks = AdvancedSettingsTabSection:Dropdown({
+                Text = "Auto Buff Checks",
                 Options = {"Attack Buff", "Range Buff", "Multiple Abilities"},
-                CurrentOption = {"Attack Buff", "Range Buff"},
-                MultiSelection = true,
-                Callback = function(Option) end,
-                SectionParent = AutoUnitBuffingSection
+                Default = {"Attack Buff", "Range Buff"},
+                Multi = true,
+                Flag = "autobuff_checks",
+                Callback = function(options) end
             })
-            --[[local AutoBuffAttackBuffCheck =
-                AdvancedSettingsTab:CreateToggle({
-                    Name = "Attack Buff Check",
-                    CurrentValue = true,
-                    Callback = function(value) end
-                })
-            local AutoBuffRangeBuffCheck =
-                AdvancedSettingsTab:CreateToggle({
-                    Name = "Range Buff Check",
-                    CurrentValue = true,
-                    Callback = function(value) end
-                })
-            local AutoBuffMultipleAbilitiesCheck =
-                AdvancedSettingsTab:CreateToggle({
-                    Name = "Unit Has Multiple Abilities",
-                    CurrentValue = false,
-                    Callback = function(value) end
-                })]] --
+
             local AutoBuffMultipleAbilitiesNameInput
-            AdvancedSettingsTab:CreateInput({
-                Name = "Multiple Abilities: Ability Name",
-                Info = "Use this only if the unit you have has multiple abilities.",
-                PlaceholderText = "Buff Ability",
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    AutoBuffMultipleAbilitiesNameInput = text
-                end,
-                SectionParent = AutoUnitBuffingSection
+            local AutoBuffAbilityNameControl = AdvancedSettingsTabSection:Input({
+                Text = "Multiple Abilities: Ability Name",
+                Placeholder = "Buff Ability",
+                Flag = "autobuff_ability_name",
+                Callback = function(text) AutoBuffMultipleAbilitiesNameInput = text end
             })
+
             local AutoBuffAbilityTime = 15
-            AdvancedSettingsTab:CreateInput({
-                Name = "Ability Time",
-                Info = "Put the time (in seconds) it takes before buffing the next unit.",
-                PlaceholderText = "15",
-                NumbersOnly = true,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    AutoBuffAbilityTime = tonumber(text)
-                end,
-                SectionParent = AutoUnitBuffingSection
+            local AutoBuffTimeControl = AdvancedSettingsTabSection:Input({
+                Text = "Ability Time",
+                Default = "15",
+                Placeholder = "15",
+                Flag = "autobuff_ability_time",
+                Callback = function(text) AutoBuffAbilityTime = tonumber(text) end
             })
+
             local CycleUnits = 8
-            AdvancedSettingsTab:CreateSlider({
-                Name = "Cycle Units",
-                Info = "Minimum number of units before cycle mode.",
-                Range = {1, 8},
-                Increment = 1,
-                CurrentValue = CycleUnits,
-                Callback = function(value) CycleUnits = value end,
-                SectionParent = AutoUnitBuffingSection
+            local AutoBuffCycleControl = AdvancedSettingsTabSection:Slider({
+                Text = "Cycle Units",
+                Min = 1, Max = 8,
+                Step = 1, Decimals = 0,
+                Default = CycleUnits,
+                Flag = "autobuff_cycle_units",
+                Callback = function(value) CycleUnits = value end
             })
+
             local AutoBuffDelay = 0
-            AdvancedSettingsTab:CreateSlider({
-                Name = "Post Loop Delay",
-                Info = "Delay after loop is complete.",
-                Range = {0, 60},
-                Increment = 1,
-                CurrentValue = AutoBuffDelay,
-                Callback = function(value) AutoBuffDelay = value end,
-                SectionParent = AutoUnitBuffingSection
+            local AutoBuffDelayControl = AdvancedSettingsTabSection:Slider({
+                Text = "Post Loop Delay",
+                Min = 0, Max = 60,
+                Step = 0.1, Decimals = 1,
+                Default = AutoBuffDelay,
+                Flag = "autobuff_delay",
+                Callback = function(value) AutoBuffDelay = value end
             })
-            local AutoBuffUnitAdd = AdvancedSettingsTab:CreateButton({
-                Name = "Add selected unit from unit list to auto buff",
+
+            local editingUnit
+            local EditStatus = AdvancedSettingsTabSection:Paragraph({
+                Title = "Edit Auto Unit Buffing Settings",
+                Content = "Select a unit under Units, then click Edit to load its saved settings."
+            })
+
+            local function BuffNotice(message)
+                Library:Notify({Title = "Auto Buff", Text = message, Duration = 6.5, Icon = "info"})
+            end
+
+            local function ReadBuffFields()
+                local mode = AutoBuffModeDropdown:Get()
+                if type(mode) == "table" then mode = mode[1] end
+                if not table.find({"Box", "Pair", "Cycle", "Spam"}, mode) then
+                    BuffNotice("Choose a valid buffing mode."); return nil
+                end
+                -- Read controls directly so saving includes text still being edited.
+                local time = tonumber(AutoBuffTimeControl:Get())
+                if not time or time ~= time or time == math.huge or time <= 0 then
+                    BuffNotice("Ability Time must be a finite number greater than zero."); return nil
+                end
+                local checks, abilityType = {}, "Normal"
+                local chosen = AutoBuffChecks:Get()
+                if type(chosen) ~= "table" then chosen = {chosen} end
+                for _, check in ipairs(chosen) do
+                    if check == "Attack Buff" then table.insert(checks, "attack")
+                    elseif check == "Range Buff" then table.insert(checks, "range")
+                    elseif check == "Multiple Abilities" then abilityType = "Multiple" end
+                end
+                local abilityName = AutoBuffAbilityNameControl:Get():match("^%s*(.-)%s*$")
+                if abilityType == "Multiple" and abilityName == "" then
+                    BuffNotice("Enter an ability name when Multiple Abilities is selected."); return nil
+                end
+                return {
+                    ["Mode"] = mode,
+                    ["Checks"] = checks,
+                    ["Ability Type"] = abilityType,
+                    ["Ability Name"] = abilityType == "Multiple" and abilityName or nil,
+                    ["Time"] = time,
+                    ["Cycle Units"] = AutoBuffCycleControl.Value,
+                    ["Delay"] = AutoBuffDelayControl.Value
+                }
+            end
+
+            AdvancedSettingsTabSection:Button({
+                Text = "Edit Auto Unit Buffing Settings",
                 Callback = function()
-                    local v = AutoBuffUnitListDropdown.CurrentOption
-                    if Settings.auto_buff_units[v] == nil then
-                        local AbilityType = "Normal"
-                        local AbilityName = nil
-
-                        local Checks = {}
-                        local ChecksGUI = AutoBuffChecks.CurrentOption
-
-                        for _, v in pairs(ChecksGUI) do
-                            if v == "Attack Buff" then
-                                table.insert(Checks, "attack")
-                            elseif v == "Range Buff" then
-                                table.insert(Checks, "range")
-                            elseif v == "Multiple Abilities" then
-                                AbilityType = "Multiple"
-                                AbilityName = AutoBuffMultipleAbilitiesNameInput
-                            end
-                        end
-
-                        --[[
-                        if AutoBuffAttackBuffCheck.CurrentValue then
-                            table.insert(Checks, "attack")
-                        end
-                        if AutoBuffRangeBuffCheck.CurrentValue then
-                            table.insert(Checks, "range")
-                        end
-                        if AutoBuffMultipleAbilitiesCheck.CurrentValue then
-                            AbilityType = "Multiple"
-                            AbilityName = AutoBuffMultipleAbilitiesNameInput
-                        end]] --
-
-                        local unit = {
-                            ["Mode"] = AutoBuffModeDropdown.CurrentOption,
-                            ["Checks"] = Checks,
-                            ["Ability Type"] = AbilityType,
-                            ["Ability Name"] = AbilityName,
-                            ["Time"] = AutoBuffAbilityTime,
-                            ["Cycle Units"] = CycleUnits,
-                            ["Delay"] = AutoBuffDelay
-                        }
-                        Settings.auto_buff_units[v] = unit
-                        Save()
-                        AutoBuffDropdown:Add(v)
-                        AutoBuffDropdown:Set(v)
-                        Rayfield:Notify({
-                            Title = "Auto Buff",
-                            Content = string.format(
-                                "Unit %s added to auto buff unit list", v),
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
-                    else
-                        Rayfield:Notify({
-                            Title = "Auto Buff",
-                            Content = "Unit already exists in auto buff list",
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
+                    local unit = AutoBuffDropdown:Get()
+                    if type(unit) == "table" then unit = unit[1] end
+                    local config = unit and Settings.auto_buff_units[unit]
+                    if not config then BuffNotice("Select an existing auto-buff unit under Units."); return end
+                    editingUnit = unit
+                    local checks = {}
+                    for _, check in ipairs(config["Checks"] or {}) do
+                        if check == "attack" then table.insert(checks, "Attack Buff")
+                        elseif check == "range" then table.insert(checks, "Range Buff") end
                     end
-                end,
-                SectionParent = AutoUnitBuffingSection
+                    if config["Ability Type"] == "Multiple" then table.insert(checks, "Multiple Abilities") end
+                    AutoBuffModeDropdown:Set(config["Mode"] or "Box", true)
+                    AutoBuffChecks:Set(checks, true)
+                    AutoBuffAbilityNameControl:Set(config["Ability Name"] or "", true)
+                    AutoBuffTimeControl:Set(tostring(config["Time"] or 15), true)
+                    AutoBuffCycleControl:Set(config["Cycle Units"] or 8, true)
+                    AutoBuffDelayControl:Set(config["Delay"] or 0, true)
+                    EditStatus:Set({Title = "Editing: " .. unit, Content = "Change the fields above, then click Save Auto Unit Buffing Settings."})
+                end
             })
-            local AutoBuffUnitDelete = AdvancedSettingsTab:CreateButton({
-                Name = "Delete selected auto buff unit from auto buff",
+
+            AdvancedSettingsTabSection:Button({
+                Text = "Save Auto Unit Buffing Settings",
                 Callback = function()
-                    local v = AutoBuffDropdown.CurrentOption
+                    local selected = AutoBuffDropdown:Get()
+                    if type(selected) == "table" then selected = selected[1] end
+                    if not editingUnit or selected ~= editingUnit then
+                        BuffNotice("Click Edit for the selected unit before saving."); return
+                    end
+                    local config = Settings.auto_buff_units[editingUnit]
+                    if not config then BuffNotice("This unit was removed. Select a unit and click Edit again."); return end
+                    local updated = ReadBuffFields()
+                    if not updated then return end
+                    -- Keep the table reference used by the running buff loop.
+                    for key, value in pairs(updated) do config[key] = value end
+                    config["Ability Name"] = updated["Ability Name"]
+                    Save()
+                    AutoBuffDropdownCallback(editingUnit)
+                    EditStatus:Set({Title = "Editing: " .. editingUnit, Content = "Changes saved."})
+                    BuffNotice("Saved auto-buff settings for " .. editingUnit .. ".")
+                end
+            })
+
+            AdvancedSettingsTabSection:Button({
+                Text = "Add selected unit from unit list to auto buff",
+                Callback = function()
+                    local v = AutoBuffUnitListDropdown:Get()
+                    if type(v) == "table" then v = v[1] end
+                    if type(v) ~= "string" or not table.find(UnitList, v) then return end
+                    if Settings.auto_buff_units[v] == nil then
+                        local updated = ReadBuffFields()
+                        if not updated then return end
+                        Settings.auto_buff_units[v] = updated
+                        Save()
+                        local newList = get_keys(Settings.auto_buff_units)
+                        AutoBuffDropdown:SetOptions(newList)
+                        AutoBuffDropdown:Set(v)
+                        Library:Notify({Title = "Auto Buff", Text = string.format("Unit %s added to auto buff unit list", v), Duration = 6.5, Icon = "info"})
+                    else
+                        Library:Notify({Title = "Auto Buff", Text = "Unit already exists in auto buff list", Duration = 6.5, Icon = "info"})
+                    end
+                end
+            })
+
+            AdvancedSettingsTabSection:Button({
+                Text = "Delete selected auto buff unit from auto buff",
+                Callback = function()
+                    local v = AutoBuffDropdown:Get()
+                    if type(v) == "table" then v = v[1] end
                     if Settings.auto_buff_units[v] ~= nil then
                         Settings.auto_buff_units[v] = nil
                         Save()
-                        AutoBuffDropdown:Remove(v)
-                        Rayfield:Notify({
-                            Title = "Auto Buff",
-                            Content = string.format(
-                                "Unit %s removed from auto buff list", v),
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
+                        local newList = get_keys(Settings.auto_buff_units)
+                        if #newList == 0 then newList = {"None"} end
+                        AutoBuffDropdown:SetOptions(newList)
+                        AutoBuffDropdown:Set(newList[#newList])
+                        Library:Notify({Title = "Auto Buff", Text = string.format("Unit %s removed from auto buff list", v), Duration = 6.5, Icon = "info"})
                     else
-                        Rayfield:Notify({
-                            Title = "Auto Buff",
-                            Content = string.format(
-                                "Unit %s does not exist in auto buff list", v),
-                            Duration = 6.5,
-                            Image = 4483362458
-                        })
+                        Library:Notify({Title = "Auto Buff", Text = string.format("Unit %s does not exist in auto buff list", v), Duration = 6.5, Icon = "info"})
                     end
-                end,
-                SectionParent = AutoUnitBuffingSection
+                end
             })
         end
 
         local function ActionQueueSettings()
-            local ActionQueueSection = AdvancedSettingsTab:CreateSection(
-                                           "Action Queue Settings")
-            AdvancedSettingsTab:CreateParagraph({
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Action Queue Settings")
+            AdvancedSettingsTabSection:Paragraph({
                 Title = "Action Queue",
-                Content = "The action queue is used for all ingame functions in the script that calls remotes. This queue ensures that the action that is being called is executed successfully as the game has bugs where it doesn't call certain remotes due to lag or insufficient resources (cash/cooldown times).",
-                SectionParent = ActionQueueSection
+                Content = "The action queue ensures remotes are executed successfully despite lag or insufficient resources."
             })
-            AdvancedSettingsTab:CreateSlider({
-                Name = "Remote Action Delay",
-                Info = "Delay after remote is fired.",
-                Range = {0, 1},
-                Increment = 0.01,
-                CurrentValue = Settings.action_queue_remote_fire_delay,
-                Callback = function(value)
-                    Settings.action_queue_remote_fire_delay = value
-                    Save()
-                end,
-                SectionParent = ActionQueueSection
+            AdvancedSettingsTabSection:Slider({
+                Text = "Remote Action Delay",
+                Min = 0, Max = 1,
+                Step = 0.01, Decimals = 2,
+                Default = Settings.action_queue_remote_fire_delay,
+                Flag = "action_queue_remote_fire_delay",
+                Callback = function(value) Settings.action_queue_remote_fire_delay = value; Save() end
             })
-            local RemoteRefiringSection =
-                AdvancedSettingsTab:CreateSection("Remote Refiring")
-            AdvancedSettingsTab:CreateParagraph({
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Remote Refiring")
+            AdvancedSettingsTabSection:Paragraph({
                 Title = "What is remote refiring?",
-                Content = "Remote refiring makes the script call the remote repeatedly until the unit successfully summons, upgrades, or uses their ability. The following parameter allows you to adjust how remote refiring works.",
-                SectionParent = RemoteRefiringSection
+                Content = "Remote refiring calls the remote repeatedly until the action succeeds."
             })
-            AdvancedSettingsTab:CreateToggle({
-                Name = "Refire Remote",
-                CurrentValue = Settings.action_queue_remote_on_fail,
-                Callback = function(value)
-                    Settings.action_queue_remote_on_fail = value
-                    Save()
-                end,
-                SectionParent = RemoteRefiringSection
+            AddToggle(AdvancedSettingsTabSection, {
+                Text = "Refire Remote",
+                Default = Settings.action_queue_remote_on_fail,
+                Flag = "action_queue_remote_on_fail",
+                Callback = function(value) Settings.action_queue_remote_on_fail = value; Save() end
             })
-            AdvancedSettingsTab:CreateSlider({
-                Name = "Pre Loop Delay",
-                Info = "Delay after remote fired before activating remote refiring.",
-                Range = {0, 1},
-                Increment = 0.01,
-                CurrentValue = Settings.action_queue_remote_on_fail_delay,
-                Callback = function(value)
-                    Settings.action_queue_remote_on_fail_delay = value
-                    Save()
-                end,
-                SectionParent = RemoteRefiringSection
+            AdvancedSettingsTabSection:Slider({
+                Text = "Pre Loop Delay",
+                Min = 0, Max = 1,
+                Step = 0.01, Decimals = 2,
+                Default = Settings.action_queue_remote_on_fail_delay,
+                Flag = "action_queue_remote_on_fail_delay",
+                Callback = function(value) Settings.action_queue_remote_on_fail_delay = value; Save() end
             })
-            AdvancedSettingsTab:CreateSlider({
-                Name = "Loop Delay",
-                Info = "Delay while looping remote refiring.",
-                Range = {0, 1},
-                Increment = 0.01,
-                CurrentValue = Settings.action_queue_remote_on_fail_delay_loop,
-                Callback = function(value)
-                    Settings.action_queue_remote_on_fail_delay = value
-                    Save()
-                end,
-                SectionParent = RemoteRefiringSection
+            AdvancedSettingsTabSection:Slider({
+                Text = "Loop Delay",
+                Min = 0, Max = 1,
+                Step = 0.01, Decimals = 2,
+                Default = Settings.action_queue_remote_on_fail_delay_loop,
+                Flag = "action_queue_remote_on_fail_delay_loop",
+                Callback = function(value) Settings.action_queue_remote_on_fail_delay = value; Save() end
             })
         end
 
         local function AutomationSettings()
-            local AutomationSection = AdvancedSettingsTab:CreateSection(
-                                          "Automation")
-            AdvancedSettingsTab:CreateParagraph({
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Automation")
+            AdvancedSettingsTabSection:Paragraph({
                 Title = "Automation",
-                Content = "The automation is used to automatically upgrades your units, sell your units and turns on autobattle. where you can manually change the values you want",
-                SectionParent = AutomationSection
+                Content = "Automatically upgrades/sells units and turns on autobattle."
             })
-            AdvancedSettingsTab:CreateInput({
-                Name = "Auto Battle Gems",
-                Info = "Stops Auto-Battle function when its below the required gems",
-                PlaceholderText = Settings.auto_battle_gems,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    Settings.auto_battle_gems = text
-                    Save()
-                end,
-                SectionParent = AutomationSection
-            })
-            AdvancedSettingsTab:CreateInput({
-                Name = "Auto Upgrade Money",
-                Info = "Starts Auto Upgrade If Money is Above The Money Required",
-                PlaceholderText = Settings.auto_upgrade_money,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    Settings.auto_upgrade_money = text
-                    Save()
-                end,
-                SectionParent = AutomationSection
-            })
-            AdvancedSettingsTab:CreateInput({
-                Name = "Auto Upgrade Wave",
-                Info = "Starts Auto Upgrade If Wave is Exact and Above Required Value",
-                PlaceholderText = Settings.auto_upgrade_wave,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    Settings.auto_upgrade_wave = text
-                    Save()
-                end,
-                SectionParent = AutomationSection
-            })
-            AdvancedSettingsTab:CreateInput({
-                Name = "Stop Auto Upgrade At Wave",
-                Info = "Stops Auto Upgrade If Wave is Exact and Above Required Value",
-                PlaceholderText = Settings.auto_upgrade_wave_stop,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    Settings.auto_upgrade_wave_stop = text
-                    Save()
-                end,
-                SectionParent = AutomationSection
-            })
-            AdvancedSettingsTab:CreateInput({
-                Name = "Auto Sell At Wave",
-                Info = "Starts Auto Sell If Wave is Exact and Above Required Value",
-                PlaceholderText = Settings.auto_upgrade_wave_sell,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    Settings.auto_upgrade_wave_sell = text
-                    Save()
-                end,
-                SectionParent = AutomationSection
-            })
+            AdvancedSettingsTabSection:Input({Text = "Auto Battle Gems", Placeholder = tostring(Settings.auto_battle_gems), Flag = "auto_battle_gems", Callback = function(text) Settings.auto_battle_gems = text; Save() end})
+            AdvancedSettingsTabSection:Input({Text = "Auto Upgrade Money", Placeholder = tostring(Settings.auto_upgrade_money), Flag = "auto_upgrade_money", Callback = function(text) Settings.auto_upgrade_money = text; Save() end})
+            AdvancedSettingsTabSection:Input({Text = "Auto Upgrade Wave", Placeholder = tostring(Settings.auto_upgrade_wave), Flag = "auto_upgrade_wave", Callback = function(text) Settings.auto_upgrade_wave = text; Save() end})
+            AdvancedSettingsTabSection:Input({Text = "Stop Auto Upgrade At Wave", Placeholder = tostring(Settings.auto_upgrade_wave_stop), Flag = "auto_upgrade_wave_stop", Callback = function(text) Settings.auto_upgrade_wave_stop = text; Save() end})
+            AdvancedSettingsTabSection:Input({Text = "Auto Sell At Wave", Placeholder = tostring(Settings.auto_upgrade_wave_sell), Flag = "auto_upgrade_wave_sell", Callback = function(text) Settings.auto_upgrade_wave_sell = text; Save() end})
         end
 
         AutoUnitBuffingSettings()
@@ -4176,356 +2873,196 @@ function InitializeUI()
     end
 
     local function LobbySettings()
-        local Lobby = Window:CreateTab("Lobby", 4483362458)
-        local LobbyScriptsSection = Lobby:CreateSection("Lobby Scripts")
-        Lobby:CreateToggle({
-            Name = "Auto Join Game",
-            Info = "Automatically joins teleporter with options defined below.",
-            CurrentValue = Settings.auto_join_game,
-            Callback = function(value)
-                Settings.auto_join_game = value
-                Save()
+        local Lobby = Window:Tab("Lobby")
+        local LobbySection
+        LobbySection = Lobby:Full("Lobby Scripts")
+        AddToggle(LobbySection, {Text = "Auto Join Game", Default = Settings.auto_join_game, Flag = "auto_join_game", Callback = function(value) Settings.auto_join_game = value; Save(); if value and is_lobby() then task.spawn(AutoJoinGame) end end})
+        AddToggle(LobbySection, {Text = "Auto Join Tower", Default = Settings.auto_join_tower, Flag = "auto_join_tower", Callback = function(value) Settings.auto_join_tower = value; Save(); if value and is_lobby() then task.spawn(AutoTower) end end})
+        AddToggle(LobbySection, {Text = "Auto Evolve EXP", Default = Settings.auto_evolve_exp, Flag = "auto_evolve_exp", Callback = function(value) Settings.auto_evolve_exp = value; Save(); if value and is_lobby() then task.spawn(AutoEvolveEXP) end end})
+        AddToggle(LobbySection, {Text = "Auto Click Popup", Default = Settings.auto_skip_gui, Flag = "auto_skip_gui", Callback = function(value) Settings.auto_skip_gui = value; Save(); if value then task.spawn(AutoSkipGUI) end end})
 
-                if value and is_lobby() then
-                    task.spawn(AutoJoinGame)
-                end
-            end,
-            SectionParent = LobbyScriptsSection
+        LobbySection = Lobby:Full("Auto Join Settings")
+        LobbySection:Slider({Text = "Delay", Min = 0, Max = 60, Step = 1, Decimals = 0, Default = Settings.auto_join_delay, Flag = "auto_join_delay", Callback = function(value) Settings.auto_join_delay = value; Save() end})
+        LobbySection:Dropdown({
+            Text = "Mode",
+            Options = {"Story", "Infinite", "Adventure", "Time Chamber", "Team Event", "Bakugan Event"},
+            Default = Settings.auto_join_mode,
+            Multi = false,
+            Flag = "auto_join_mode",
+            Callback = function(options) Settings.auto_join_mode = options; Save() end
         })
-        Lobby:CreateToggle({
-            Name = "Auto Join Tower",
-            Info = "Automatically joins Tower to the Higest Level",
-            CurrentValue = Settings.auto_join_tower,
-            Callback = function(value)
-                Settings.auto_join_tower = value
-                Save()
-                if value and is_lobby() then
-                    task.spawn(AutoTower)
-                end
-            end,
-            SectionParent = LobbyScriptsSection
-        })
-        Lobby:CreateToggle({
-            Name = "Auto Evolve EXP",
-            Info = "Automatically evolves exp units from inventory to EXP IV.",
-            CurrentValue = Settings.auto_evolve_exp,
-            Callback = function(value)
-                Settings.auto_evolve_exp = value
-                Save()
+        StoryLevelControl = LobbySection:Slider({Text = "Story Level", Min = 1, Max = math.max(get_number_missions(), Settings.auto_join_story_level), Step = 1, Decimals = 0, Default = Settings.auto_join_story_level, Flag = "auto_join_story_level", Callback = function(value) Settings.auto_join_story_level = value; Save() end})
 
-                if value and is_lobby() then
-                    task.spawn(AutoEvolveEXP)
-                end
-            end,
-            SectionParent = LobbyScriptsSection
-        })
-        Lobby:CreateToggle({
-            Name = "Auto Click Popup",
-            Info = "Automatically clicks popups on GUI when summoning or etc.",
-            CurrentValue = Settings.auto_skip_gui,
-            Callback = function(value)
-                Settings.auto_skip_gui = value
-                Save()
-
-                if value then task.spawn(AutoSkipGUI) end
-            end,
-            SectionParent = LobbyScriptsSection
-        })
-        local AutoJoinSection = Lobby:CreateSection("Auto Join Settings")
-        Lobby:CreateSlider({
-            Name = "Delay",
-            Info = "The script will wait for the set amount of seconds before joining teleporter.",
-            Range = {0, 60},
-            Increment = 1,
-            CurrentValue = Settings.auto_join_delay,
-            Callback = function(value)
-                Settings.auto_join_delay = value
-                Save()
-            end,
-            SectionParent = AutoJoinSection
-        })
-        Lobby:OldCreateDropdown({
-            Name = "Mode",
-            Options = {
-                "Story", "Infinite", "Adventure", "Time Chamber", "Team Event",
-                "Bakugan Event"
-            },
-            CurrentOption = Settings.auto_join_mode,
-            Callback = function(value)
-                Settings.auto_join_mode = value
-                Save()
-            end,
-            SectionParent = AutoJoinSection
-        })
-        Lobby:CreateSlider({
-            Name = "Story Level",
-            Info = "Choose which level to do for story mode.",
-            Range = {1, get_number_missions()},
-            Increment = 1,
-            CurrentValue = Settings.auto_join_story_level,
-            Callback = function(value)
-                Settings.auto_join_story_level = value
-                Save()
-            end,
-            SectionParent = AutoJoinSection
-        })
         if InfiniteMapTable[Settings.auto_join_infinite_level] == nil then
-            Settings.auto_join_infinite_level = "-1"
-            Save()
+            Settings.auto_join_infinite_level = "-1"; Save()
         end
-        Lobby:OldCreateDropdown({
-            Name = "Infinite Map Selection",
+        LobbySection:Dropdown({
+            Text = "Infinite Map Selection",
             Options = GetMapsFromTable(InfiniteMapTable),
-            CurrentOption = InfiniteMapTable[Settings.auto_join_infinite_level],
-            Callback = function(option)
+            Default = InfiniteMapTable[Settings.auto_join_infinite_level],
+            Multi = false,
+            Flag = "auto_join_infinite_level",
+            Callback = function(options)
+                local option = options
                 for k, v in pairs(InfiniteMapTable) do
-                    if v == option then
-                        Settings.auto_join_infinite_level = k
-                        Save()
-                        break
-                    end
+                    if v == option then Settings.auto_join_infinite_level = k; Save(); break end
                 end
-            end,
-            SectionParent = AutoJoinSection
+            end
         })
-        if AdventureMapTable[Settings.auto_join_adventure_level] == nil then
-            Settings.auto_join_adventure_level = "-1133"
-            Save()
+
+        RefreshAdventureMaps()
+        local adventureLabelsToIds = {}
+        local adventureIdsToLabels = {}
+        local function BuildAdventureOptions()
+            table.clear(adventureLabelsToIds)
+            table.clear(adventureIdsToLabels)
+            local counts, options = {}, {}
+            for _, name in pairs(AdventureMapTable) do
+                counts[name] = (counts[name] or 0) + 1
+            end
+            for id, name in pairs(AdventureMapTable) do
+                local label = counts[name] > 1 and (name .. " [" .. id .. "]") or name
+                adventureLabelsToIds[label] = id
+                adventureIdsToLabels[id] = label
+                table.insert(options, label)
+            end
+            table.sort(options)
+            local selected = adventureIdsToLabels[tostring(Settings.auto_join_adventure_level)]
+            if not selected then
+                selected = #options == 0 and "Waiting for Adventure maps..." or "Select an Adventure map..."
+                table.insert(options, 1, selected)
+            end
+            return options, selected
         end
-        Lobby:OldCreateDropdown({
-            Name = "Adventure Map Selection",
-            Options = GetMapsFromTable(AdventureMapTable),
-            CurrentOption = AdventureMapTable[Settings.auto_join_adventure_level],
+
+        local adventureOptions, adventureSelected = BuildAdventureOptions()
+        local AdventureMapDropdown = LobbySection:Dropdown({
+            Text = "Adventure Map Selection",
+            Options = adventureOptions,
+            Default = adventureSelected,
+            Multi = false,
+            Search = true,
+            Flag = "auto_join_adventure_level",
             Callback = function(option)
-                for k, v in pairs(AdventureMapTable) do
-                    if v == option then
-                        Settings.auto_join_adventure_level = k
-                        Save()
-                        break
-                    end
-                end
-            end,
-            SectionParent = AutoJoinSection
+                if type(option) == "table" then option = option[1] end
+                local id = adventureLabelsToIds[option]
+                if id then Settings.auto_join_adventure_level = id; Save() end
+            end
         })
+
+        -- Also handles delayed card creation, title changes and replaced HUDs.
+        -- Preserve the saved map ID while the game's list is unavailable.
+        task.spawn(function()
+            while AdventureMapDropdown.Instance and AdventureMapDropdown.Instance.Parent do
+                if RefreshAdventureMaps() then
+                    local options, selected = BuildAdventureOptions()
+                    AdventureMapDropdown:SetOptions(options)
+                    AdventureMapDropdown:Set(selected, true)
+                end
+                task.wait(2)
+            end
+        end)
     end
 
     local function WebhookSettings()
-        local Webhook = Window:CreateTab("Webhooks", 4483362458)
-        local SettingsSection = Webhook:CreateSection("Settings")
-        Webhook:CreateInput({
-            Name = "URL",
-            Info = "Put your webhook url here",
-            PlaceholderText = Settings.webhook_url,
-            RemoveTextAfterFocusLost = false,
-            Callback = function(text)
-                Settings.webhook_url = text
-                Save()
-            end,
-            SectionParent = SettingsSection
+        local Webhook = Window:Tab("Webhooks")
+        local WebhookSection
+        WebhookSection = Webhook:Full("Settings")
+        WebhookSection:Input({Text = "URL", Placeholder = Settings.webhook_url, Flag = "webhook_url", Callback = function(text) Settings.webhook_url = text; Save() end})
+        WebhookSection:Input({Text = "Discord ID", Placeholder = Settings.webhook_discord_id, Flag = "webhook_discord_id", Callback = function(text) Settings.webhook_discord_id = text; Save() end})
+        AddToggle(WebhookSection, {Text = "Ping User", Default = Settings.webhook_ping_user, Flag = "webhook_ping_user", Callback = function(value) Settings.webhook_ping_user = value; Save() end})
+        WebhookSection:Button({Text = "Test Webhook", Callback = function() SendWebhook({{["name"] = "Webhook Test", ["value"] = "Webhook sent successfully!"}}) end})
+        WebhookSection:ColorPicker({
+            Text = "Webhook color",
+            Default = Color3.fromHex(Settings.webhook_color), Alpha = false,
+            Flag = "webhook_color",
+            Callback = function(value) Settings.webhook_color = value:ToHex(); Save() end
         })
-        Webhook:CreateInput({
-            Name = "Discord ID",
-            Info = "Use developer mode and right click your profile to copy your id.",
-            PlaceholderText = Settings.webhook_discord_id,
-            RemoveTextAfterFocusLost = false,
-            Callback = function(text)
-                Settings.webhook_discord_id = text
-                Save()
-            end,
-            SectionParent = SettingsSection
-        })
-        Webhook:CreateToggle({
-            Name = "Ping User",
-            Info = "Make sure to fill in your discord id before using this.",
-            CurrentValue = Settings.webhook_ping_user,
-            Callback = function(value)
-                Settings.webhook_ping_user = value
-                Save()
-            end,
-            SectionParent = SettingsSection
-        })
-        Webhook:CreateButton({
-            Name = "Test Webhook",
-            Callback = function()
-                SendWebhook({
-                    {
-                        ["name"] = "Webhook Test",
-                        ["value"] = "Webhook sent successfully!"
-                    }
-                })
-            end,
-            SectionParent = SettingsSection
-        })
-        Webhook:CreateColorPicker({
-            Name = "Webhook color",
-            Info = "Set the webhook color shown on the left side of the webhook.",
-            Color = Color3.fromHex(Settings.webhook_color),
-            Callback = function(value)
-                Settings.webhook_color = value:ToHex()
-                Save()
-            end,
-            SectionParent = SettingsSection
-        })
-        local TogglesSection = Webhook:CreateSection("Toggles")
-        Webhook:CreateToggle({
-            Name = "Send webhook on game end",
-            Info = "When the game ends, a webhook will be sent.",
-            CurrentValue = Settings.webhook_end_game,
-            Callback = function(value)
-                Settings.webhook_end_game = value
-                Save()
-            end,
-            SectionParent = TogglesSection
-        })
-        Webhook:CreateToggle({
-            Name = "Send webhook after exp evolve",
-            Info = "When the auto EXP evolve is finished, a webhook will be sent.",
-            CurrentValue = Settings.webhook_exp_evolve,
-            Callback = function(value)
-                Settings.webhook_exp_evolve = value
-                Save()
-            end,
-            SectionParent = TogglesSection
-        })
+        WebhookSection = Webhook:Full("Toggles")
+        AddToggle(WebhookSection, {Text = "Send webhook on game end", Default = Settings.webhook_end_game, Flag = "webhook_end_game", Callback = function(value) Settings.webhook_end_game = value; Save() end})
+        AddToggle(WebhookSection, {Text = "Send webhook after exp evolve", Default = Settings.webhook_exp_evolve, Flag = "webhook_exp_evolve", Callback = function(value) Settings.webhook_exp_evolve = value; Save() end})
     end
 
     local function MiscellaneousSettings()
-        local Miscellaneous = Window:CreateTab("Miscellaneous", 4483362458)
-        local GameSettingsSection = Miscellaneous:CreateSection("Game Settings")
-
-        Miscellaneous:CreateToggle({
-            Name = "FPS Boost",
-            CurrentValue = Settings.fps_boost,
+        local Miscellaneous = Window:Tab("Miscellaneous")
+        local MiscellaneousSection
+        MiscellaneousSection = Miscellaneous:Full("Game Settings")
+        AddToggle(MiscellaneousSection, {Text = "FPS Boost", Default = Settings.fps_boost, Flag = "fps_boost", Callback = function(value) Settings.fps_boost = value; Save() end})
+        AddToggle(MiscellaneousSection, {
+            Text = "Anti-AFK",
+            Default = Settings.anti_afk,
+            Flag = "anti_afk",
             Callback = function(value)
-                Settings.fps_boost = value
-                Save()
-            end,
-            SectionParent = GameSettingsSection
-        })
-        Miscellaneous:CreateToggle({
-            Name = "Anti-AFK",
-            CurrentValue = Settings.anti_afk,
-            Callback = function(value)
-                Settings.anti_afk = value
-                Save()
-                for _, v in
-                    pairs(getconnections(game.Players.LocalPlayer.Idled)) do
-                    v:Disable()
-                end
-            end,
-            SectionParent = GameSettingsSection
-        })
-        Miscellaneous:CreateToggle({
-            Name = "Disable 3D Rendering",
-            Info = "Disables 3D Rendering when enabled",
-            CurrentValue = Settings.disable_3d_rendering,
-            Callback = function(value)
-                Settings.disable_3d_rendering = value
-                Save()
-                game:GetService("RunService"):Set3dRenderingEnabled(not value)
-            end,
-            SectionParent = GameSettingsSection
-        })
-
-        Miscellaneous:CreateToggle({
-            Name = "Auto Execute",
-            Info = "Auto executes script on next teleport.",
-            CurrentValue = Settings.auto_execute,
-            Callback = function(value)
-                Settings.auto_execute = value
-                Save()
-                if value then library.AutoExecute() end
-            end,
-            SectionParent = GameSettingsSection
-        })
-
-        if get_world() ~= -1 and get_world() ~= -2 then
-            Miscellaneous:CreateToggle({
-                Name = "Anonymous Mode",
-                Info = "Hides Your Name in Leaderboard (Client Sided).",
-                CurrentValue = Settings.anonymous_mode,
-                Callback = function(value)
-                    Settings.anonymous_mode = value
-                    Save()
-                    if value then AnonMode() end
-                end,
-                SectionParent = GameSettingsSection
-            })
-
-            Miscellaneous:CreateInput({
-                Name = "Change Name",
-                Info = "Changes the name in leaderboard.",
-                PlaceholderText = Settings.anonymous_mode_name,
-                RemoveTextAfterFocusLost = false,
-                Callback = function(text)
-                    Settings.anonymous_mode_name = text
-                    Save()
-                    if Settings.anonymous_mode then
-                        AnonMode()
-                    end
-                end,
-                SectionParent = GameSettingsSection
-            })
-
-            local WorldTeleportsSection =
-                Miscellaneous:CreateSection("World Teleports")
-
-            local function UseWorldTeleporter(Teleporter)
-                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter,
-                                  0)
-                task.wait()
-                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter,
-                                  1)
+                Settings.anti_afk = value; Save()
+                for _, v in pairs(getconnections(game.Players.LocalPlayer.Idled)) do v:Disable() end
             end
-
+        })
+        AddToggle(MiscellaneousSection, {
+            Text = "Disable 3D Rendering",
+            Default = Settings.disable_3d_rendering,
+            Flag = "disable_3d_rendering",
+            Callback = function(value)
+                Settings.disable_3d_rendering = value; Save()
+                game:GetService("RunService"):Set3dRenderingEnabled(not value)
+            end
+        })
+        AddToggle(MiscellaneousSection, {
+            Text = "Auto Execute",
+            Default = Settings.auto_execute,
+            Flag = "auto_execute",
+            Callback = function(value)
+                Settings.auto_execute = value; Save()
+                if value then library.AutoExecute() end
+            end
+        })
+        if get_world() ~= -1 and get_world() ~= -2 then
+            AddToggle(MiscellaneousSection, {
+                Text = "Anonymous Mode",
+                Default = Settings.anonymous_mode,
+                Flag = "anonymous_mode",
+                Callback = function(value)
+                    Settings.anonymous_mode = value; Save()
+                    if value then AnonMode() end
+                end
+            })
+            MiscellaneousSection:Input({
+                Text = "Change Name",
+                Placeholder = Settings.anonymous_mode_name,
+                Flag = "anonymous_mode_name",
+                Callback = function(text)
+                    Settings.anonymous_mode_name = text; Save()
+                    if Settings.anonymous_mode then AnonMode() end
+                end
+            })
+            MiscellaneousSection = Miscellaneous:Full("World Teleports")
+            local function UseWorldTeleporter(Teleporter)
+                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter, 0)
+                task.wait()
+                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter, 1)
+            end
             if get_world() == 1 then
-                Miscellaneous:CreateButton({
-                    Name = "Teleport to World 2",
-                    Callback = function()
-                        UseWorldTeleporter(get_world_teleporter())
-                    end,
-                    SectionParent = WorldTeleportsSection
-                })
+                MiscellaneousSection:Button({Text = "Teleport to World 2", Callback = function() UseWorldTeleporter(get_world_teleporter()) end})
             elseif get_world() == 2 then
-                Miscellaneous:CreateButton({
-                    Name = "Teleport to World 1",
-                    Callback = function()
-                        UseWorldTeleporter(get_world_teleporter())
-                    end,
-                    SectionParent = WorldTeleportsSection
-                })
+                MiscellaneousSection:Button({Text = "Teleport to World 1", Callback = function() UseWorldTeleporter(get_world_teleporter()) end})
             end
         end
-
-        local ResetSection = Miscellaneous:CreateSection("Reset")
-        -- TODO: Implement UI reload after settings are reset.
-        Miscellaneous:CreateButton({
-            Name = "Reset settings to default",
+        MiscellaneousSection = Miscellaneous:Full("Reset")
+        MiscellaneousSection:Button({
+            Text = "Reset settings to default",
             Callback = function()
-                Settings = DefaultSettings
-                Save()
-                Rayfield:Notify({
-                    Title = "Reset",
-                    Content = "Settings restored to default! UI Restarting in 2 seconds",
-                    Duration = 6.5,
-                    Image = 4483362458
-                })
-                task.wait(2)
-                if isfile("KarmaPanda\\key.panda") then
-                    library.LoadScript(readfile("KarmaPanda\\key.panda"))
-                end
-            end,
-            SectionParent = ResetSection
+                Settings = DefaultSettings; Save()
+                Library:Notify({Title = "Reset", Text = "Settings restored to default! Rejoin or re-execute to apply.", Duration = 6.5, Icon = "info"})
+            end
         })
     end
 
     local function CreditsSettings()
-        local Credits = Window:CreateTab("Credits", 4483362458)
-        local CreditsSection = Credits:CreateSection("Credits")
-        Credits:CreateParagraph({
+        local Credits = Window:Tab("Credits")
+        local CreditsSection
+        CreditsSection = Credits:Full("Credits")
+        CreditsSection:Paragraph({
             Title = "Made by KarmaPanda & Maintained by Jeikaru",
-            Content = "Additional credits to shlex#9425 for the Rayfield UI library, as well as to Metas#7777 for the CustomField|ArrayField UI library. Thanks to all the supporters and donators of the script! Be sure to join our discord at https://discord.gg/BrnQQGKbvE to get the latest announcements and communicate with the community!",
-            SectionParent = CreditsSection
+            Content = "UI powered by Facility (NEW UI). Thanks to all the supporters and donators! Join our Discord: https://discord.gg/BrnQQGKbvE"
         })
     end
 
@@ -4538,6 +3075,7 @@ function InitializeUI()
     CreditsSettings()
     CreateMiniGUI()
     CreateHideButtonGUI()
+    Library:ClearDirty()
 end
 
 InitializeUI()
@@ -4545,15 +3083,18 @@ InitializeUI()
 print("[KarmaPanda] UI Loaded: " .. os.clock() - benchmark_time)
 benchmark_time = os.clock()
 
-if Settings.auto_execute then
-    -- original authentication code has been removed.
-    if not _G.auto_executed then
-        _G.auto_executed = true
+end, function(err)
+    return debug.traceback(tostring(err), 2)
+end)
+currentSession.Loading = false
 
-        loadstring(game:HttpGet(
-                       "https://api.irisapp.ca/Scripts/IrisBetterCompat.lua"))()
-        queue_on_teleport(loadstring(game:HttpGet(
-                                         "https://raw.githubusercontent.com/KarmaPanda/Roblox/refs/heads/main/astd.lua"))())
-        print("[KarmaPanda]: Queue on teleport for auto execute sucessful!")
+if not started then
+
+    if not currentSession.Library and sessionEnvironment[sessionKey] == currentSession then
+        sessionEnvironment[sessionKey] = nil
+    end
+    warn("[KarmaPanda] Startup failed: " .. tostring(startupError))
+    if currentSession.Library then
+        warn("[KarmaPanda] Rejoin before retrying to clear the partial session.")
     end
 end
