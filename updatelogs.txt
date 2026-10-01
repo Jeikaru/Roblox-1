@@ -2,7 +2,9 @@ Key:UpdateV4.1
 
 Update V4.1
 
-UI changes only.
++ Added Update Log (Removes after second execute)
+
+Small Changes:
 
 Reorganized Main, Macro, Lobby, Webhooks, Advanced Settings, and Miscellaneous into two columns.
 Moved Automation to the right column of Main, below GUI Scripts.
