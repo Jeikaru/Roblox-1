@@ -6,6 +6,8 @@ The original release was reported as tested and working. The latest changes docu
 
 The latest source provided with this README is [astd.lua](https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/astd.lua).
 
+Important Notice: [![Reviewed on ScriptBlox](https://scriptblox.com/badge/UPDATE-+-4X-All-Star-Tower-Defense-Karmapanda-Hub-12716)](https://scriptblox.com/script/UPDATE-+-4X-All-Star-Tower-Defense-Karmapanda-Hub-12716)
+
 ## Script Features
 
 ### Main
