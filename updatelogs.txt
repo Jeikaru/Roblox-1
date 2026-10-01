@@ -13,4 +13,4 @@ Moved Remote Refiring to the right column of Advanced Settings, below Action Que
 
 Only Ui change expect no bugs
 
-report bugs at pull request
+report bugs at https://github.com/Jeikaru/Roblox-1/pulls
