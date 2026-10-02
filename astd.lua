@@ -1,7 +1,6 @@
--- it took me weeks to integrate new ui. rayfield was buggy asf.
 if not game:IsLoaded() then game.Loaded:Wait() end
 if game.GameId ~= 1720936166 then return end
-
+print("hi work pls")
 -- Share one running instance across repeated executions in this session.
 local sessionEnvironment = (getgenv and getgenv()) or shared
 local sessionKey = "KarmaPandaASTD_FacilitySession"
@@ -104,7 +103,9 @@ local function CompareColor3(base, toCompare)
     end
 end
 
-local version = "4.0 BETA"
+local version = "4.1"
+
+local UpdateLogUrl = "https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/updatelogs.txt"
 local Settings
 local Macros = {}
 
@@ -350,13 +351,78 @@ if Macros[Settings.macro_profile] == nil then
     Settings.macro_profile = MacroProfileList[#MacroProfileList]
 end
 
+-- Keep new loadout metadata readable and ahead of Map without changing legacy data.
+local function EncodeMacroProfile(profileName, profile)
+    local http = game:GetService("HttpService")
+    if not profile["Equipped Units:"] then return http:JSONEncode({[profileName]=profile}) end
+    local fields, included = {}, {}
+    local function add(key)
+        if profile[key] == nil then return end
+        local encoded
+        if key == "Equipped Units:" then
+            local rows = {}
+            for index=1,6 do
+                local slot = "Slot" .. index
+                if profile[key][slot] ~= nil then
+                    table.insert(rows, "      " .. http:JSONEncode(slot) .. ": " .. http:JSONEncode(profile[key][slot]))
+                end
+            end
+            encoded = "{\n" .. table.concat(rows, ",\n") .. "\n    }"
+        else encoded = http:JSONEncode(profile[key]) end
+        table.insert(fields, "    " .. http:JSONEncode(key) .. ": " .. encoded)
+        included[key] = true
+    end
+    for _, key in ipairs({"Equipped Units:", "Map", "Macro", "Settings", "Units"}) do add(key) end
+    for key in pairs(profile) do if not included[key] then add(key) end end
+    return "{\n  " .. http:JSONEncode(profileName) .. ": {\n" .. table.concat(fields, ",\n") .. "\n  }\n}"
+end
+
+-- Read the first line as the update key; display only the plain text below it.
+local function ShowUpdateLog()
+    local fetched, source = pcall(function()
+        return game:HttpGet(UpdateLogUrl)
+    end)
+    if not fetched or type(source) ~= "string" then
+        warn("[KarmaPanda] Could not fetch update notes; will retry next run.")
+        return
+    end
+    source = source:gsub("^\239\187\191", ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+    local firstLine, notes = source:match("^([^\n]*)\n(.*)$")
+    local updateKey = firstLine and firstLine:match("^%s*Key:%s*(.-)%s*$")
+    if not updateKey or updateKey == "" or not notes or not notes:find("%S") then
+        warn("[KarmaPanda] Update log requires Key:<update key> on the first line and notes below it.")
+        return
+    end
+    if Settings.UpdateKey == updateKey then return end
+    notes = notes:gsub("^\n+", ""):gsub("\n+$", "")
+
+    local updateTab = Window:Tab("Update Log")
+    local section = updateTab:Full("Update Log")
+    local paragraph = section:Paragraph({Content = notes})
+    paragraph.Title.Parent.Visible = false
+    paragraph.Body.RichText = false
+    Window:SetTab(updateTab)
+
+    -- Remember the key silently after showing the notes and saving successfully.
+    local updatedProfile = DeepCopy(Settings)
+    updatedProfile.UpdateKey = updateKey
+    local saved, saveError = pcall(function()
+        writefile(SettingsFile, game:GetService("HttpService"):JSONEncode(updatedProfile))
+    end)
+    if saved then
+        Settings.UpdateKey = updateKey
+    else
+        warn("[KarmaPanda] Could not save update key: " .. tostring(saveError))
+    end
+end
+
 function Save()
     writefile(SettingsFile, game:GetService("HttpService"):JSONEncode(Settings))
     for profile_name, macro_table in pairs(Macros) do
         local save_data = {}
         save_data[profile_name] = macro_table
         writefile(folder_name .. "\\" .. profile_name .. ".json",
-                  game:GetService("HttpService"):JSONEncode(save_data))
+                  EncodeMacroProfile(profile_name, macro_table))
     end
 end
 
@@ -1231,12 +1297,300 @@ game_metatable.__namecall = newcclosure(function(self, ...)
     return namecall_original(self, ...)
 end)
 
+-- Macro loadout metadata and explicit preparation; independent of playback.
+local MacroLoadout = {Busy = false, Slots = {"One", "Two", "Three", "Four", "Five", "Six"}}
+
+function MacroLoadout.Notify(message)
+    Library:Notify({Title="Macro Loadout", Text=message, Duration=8, Icon="info"})
+end
+
+function MacroLoadout.Data(key)
+    return game.ReplicatedStorage.Remotes.Server:InvokeServer("Data", key)
+end
+
+function MacroLoadout.Equipped()
+    local data = MacroLoadout.Data("Unit_Equip")
+    assert(type(data) == "table", "Could not read equipped units.")
+    local slots = {}
+    for _, unit in pairs(data) do
+        if type(unit) == "table" and unit.Spot and unit.Name then slots[unit.Spot] = unit end
+    end
+    return slots
+end
+
+function MacroLoadout.GetCurrentMap()
+    local folder = workspace:FindFirstChild("Don't Care")
+    local children = folder and folder:GetChildren() or {}
+    return children[1] and children[1].Name or "Unknown"
+end
+
+function MacroLoadout.Capture(profile)
+    -- Only first recordings: never backfill metadata into a recorded legacy macro.
+    if profile["Equipped Units:"] or next(profile.Macro or {}) or next(profile.Units or {}) then return end
+    local entries, unknown = {}, {}
+    profile.Map = type(profile.Map) == "table" and profile.Map or {}
+    profile.Map.Name = MacroLoadout.GetCurrentMap()
+    local ok, slots = pcall(MacroLoadout.Equipped)
+    if not ok then
+        Save()
+        MacroLoadout.Notify("Recording will continue, but loadout capture failed: " .. tostring(slots))
+        return
+    end
+    for index, spot in ipairs(MacroLoadout.Slots) do
+        local unit = slots[spot]
+        local entry = {Name=unit and unit.Name or "", Orb=""}
+        if unit then
+            -- The ID-based call is already used by this source's upgrade-cost helper.
+            -- Missing data is unknown, not proof of an orb-free unit.
+            local orb = unit.Orb
+            if type(orb) ~= "string" or orb == "" then
+                local found, value = pcall(function()
+                    return OrbsV2Client.GetAssignedOrbForUnit(unit.ID)
+                end)
+                if found and type(value) == "string" and value ~= "" then orb = value end
+            end
+            if type(orb) == "string" and orb ~= "" then
+                entry.Orb = orb
+            else
+                entry.OrbUnconfirmed = true
+                table.insert(unknown, unit.Name)
+            end
+        end
+        entries["Slot" .. index] = entry
+    end
+    profile["Equipped Units:"] = entries
+    Save()
+    if #unknown > 0 then
+        MacroLoadout.Notify("Loadout saved. Review empty Orb fields for " .. table.concat(unknown, ", ")
+            .. ". Set OrbUnconfirmed to false after confirming an empty orb.")
+    end
+end
+
+function MacroLoadout.Status(color, text)
+    MacroLoadout.Color = color
+    if MacroLoadout.Button then
+        MacroLoadout.Button.Instance.BackgroundColor3 = color
+    end
+    if MacroLoadout.Description then
+        MacroLoadout.Description:Set({Content="Equip Current Macro Units and Orbs\n" .. text})
+    end
+end
+
+function MacroLoadout.Wait(check)
+    local deadline = os.clock() + 12
+    repeat
+        if check() then return end
+        task.wait(0.5)
+    until os.clock() >= deadline
+    error("The game did not confirm the expected unit slots. Setup stopped.")
+end
+
+function MacroLoadout.Plan(profile)
+    local saved = profile["Equipped Units:"]
+    assert(type(saved) == "table", "This macro has no saved loadout.")
+    local current = MacroLoadout.Equipped()
+    local ok, inventory = pcall(MacroLoadout.Data, "Units")
+    local inventoryKnown = ok and type(inventory) == "table"
+    local candidates, seen = {}, {}
+    local function add(unit)
+        if type(unit) == "table" and type(unit.Name) == "string" and unit.ID ~= nil and not seen[unit.ID] then
+            seen[unit.ID] = true
+            table.insert(candidates, unit)
+        end
+    end
+    for _, unit in pairs(current) do add(unit) end
+    if inventoryKnown then for _, unit in pairs(inventory) do add(unit) end end
+    local plan = {Rows={}, Issues={}, Rebuild=true, Current=current}
+    local used, required = {}, 0
+    for index, spot in ipairs(MacroLoadout.Slots) do
+        local entry = saved["Slot" .. index]
+        assert(type(entry) == "table" and type(entry.Name) == "string" and type(entry.Orb) == "string",
+            "Invalid Slot" .. index .. ": use separate Name and Orb string fields.")
+        local row = {Spot=spot, Name=entry.Name, Orb=entry.Orb, OrbUnconfirmed=entry.OrbUnconfirmed == true}
+        if row.Name ~= "" then
+            required = required + 1
+            -- Prefer an already matching copy, then an owned inventory copy.
+            local matching = current[spot]
+            if matching and matching.Name == row.Name and not used[matching.ID] then row.Unit = matching end
+            if not row.Unit then
+                for _, unit in ipairs(candidates) do
+                    if unit.Name == row.Name and not used[unit.ID] then row.Unit = unit; break end
+                end
+            end
+            if row.Unit then
+                used[row.Unit.ID] = true
+                if not tonumber(row.Unit.Level) then
+                    plan.Rebuild = false
+                    table.insert(plan.Issues, "Could not read level for " .. row.Name)
+                end
+            else
+                plan.Rebuild = false
+                table.insert(plan.Issues, (inventoryKnown and "Unit not found: " or "Could not check unit availability: ") .. row.Name)
+            end
+            if row.Orb ~= "" then
+                -- The inventory orb API's argument/return format is not established.
+                -- Do not mislabel an unverified count as a missing orb.
+                table.insert(plan.Issues, "Could not check orb availability: " .. row.Orb .. " (" .. row.Name .. ")")
+            elseif row.OrbUnconfirmed then
+                table.insert(plan.Issues, "Orb was not captured for " .. row.Name .. "; its orb will be left unchanged.")
+            end
+        end
+        plan.Rows[index] = row
+    end
+    assert(required > 0, "This macro has no saved units to equip.")
+    -- The known Equip request has no slot argument. Never compact an interior hole.
+    local emptySeen = false
+    for _, row in ipairs(plan.Rows) do
+        if row.Name == "" then emptySeen = true
+        elseif emptySeen then
+            plan.Rebuild = false
+            table.insert(plan.Issues, "This loadout contains an empty interior slot; automatic rebuilding cannot preserve it.")
+            break
+        end
+    end
+    return plan
+end
+
+function MacroLoadout.Execute(plan, profileName)
+    local function guard()
+        assert(Settings.macro_profile == profileName, "Selected macro changed. Setup stopped.")
+        assert(not Settings.macro_record and not Settings.macro_playback, "Stop recording and playback before equipping a loadout.")
+    end
+    guard()
+    MacroLoadout.Status(Color3.fromRGB(230,180,35), "Equipping units...")
+    local input = game.ReplicatedStorage.Remotes.Input
+    local server = game.ReplicatedStorage.Remotes.Server
+    local function matches(slots)
+        for _, row in ipairs(plan.Rows) do
+            local unit = slots[row.Spot]
+            if row.Name == "" then if unit then return false end
+            elseif not unit or unit.Name ~= row.Name then return false end
+        end
+        return true
+    end
+    local slots = MacroLoadout.Equipped()
+    if not matches(slots) and plan.Rebuild then
+        for _, unit in pairs(slots) do
+            guard()
+            input:FireServer("Unequip", {Stats=unit.Name})
+            task.wait(0.3)
+        end
+        MacroLoadout.Wait(function() guard(); return next(MacroLoadout.Equipped()) == nil end)
+        for _, row in ipairs(plan.Rows) do
+            if row.Name ~= "" then
+                guard()
+                local unit = row.Unit
+                server:InvokeServer("Equip", {Stats=game.HttpService:JSONEncode({Name=unit.Name, ID=unit.ID, Level=unit.Level})})
+                MacroLoadout.Wait(function()
+                    guard()
+                    local actual = MacroLoadout.Equipped()[row.Spot]
+                    return actual and actual.Name == row.Name and actual.ID == unit.ID
+                end)
+            end
+        end
+        slots = MacroLoadout.Equipped()
+        assert(matches(slots), "Final unit order check failed.")
+    end
+    local targets, partial = {}, not matches(slots)
+    for _, row in ipairs(plan.Rows) do
+        local unit = slots[row.Spot]
+        if row.Name ~= "" and unit and unit.Name == row.Name then
+            if row.Orb ~= "" or not row.OrbUnconfirmed then
+                table.insert(targets, {ID=unit.ID, Name=unit.Name, Spot=row.Spot, Orb=row.Orb})
+            else partial = true end
+        end
+    end
+    local function checkTargets()
+        guard()
+        local actual = MacroLoadout.Equipped()
+        for _, target in ipairs(targets) do
+            local unit = actual[target.Spot]
+            assert(unit and unit.ID == target.ID and unit.Name == target.Name, "Team changed during orb setup.")
+        end
+    end
+    MacroLoadout.Status(Color3.fromRGB(230,180,35), "Sending orb requests...")
+    for _, target in ipairs(targets) do
+        checkTargets()
+        input:FireServer("UnattuneOrb", target.ID)
+        task.wait(0.5)
+    end
+    task.wait(1)
+    for _, target in ipairs(targets) do
+        if target.Orb ~= "" then
+            checkTargets()
+            input:FireServer("Orb", target.ID, target.Orb)
+            task.wait(1)
+        end
+    end
+    checkTargets()
+    if partial then
+        MacroLoadout.Status(Color3.fromRGB(210,65,65), "Partial setup: unresolved slots/orbs left unchanged. Orb requests were not verified.")
+    else
+        MacroLoadout.Status(Color3.fromRGB(65,180,100), "Finished: unit order checked; orb requests sent, not verified.")
+    end
+end
+
+function MacroLoadout.Start()
+    if MacroLoadout.Busy then return end
+    if Settings.macro_record or Settings.macro_playback then
+        MacroLoadout.Notify("Stop recording and playback before equipping a loadout."); return
+    end
+    MacroLoadout.Busy = true
+    MacroLoadout.Button:SetEnabled(false)
+    local profileName = Settings.macro_profile
+    local function finish()
+        MacroLoadout.Busy = false
+        MacroLoadout.Button:SetEnabled(true)
+    end
+    MacroLoadout.Status(Color3.fromRGB(230,180,35), "Checking saved loadout and inventory...")
+    local ok, plan = pcall(function() return MacroLoadout.Plan(Macros[profileName] or {}) end)
+    if not ok then
+        MacroLoadout.Status(Color3.fromRGB(210,65,65), tostring(plan))
+        MacroLoadout.Notify(tostring(plan)); finish(); return
+    end
+    local function run()
+        task.spawn(function()
+            local success, message = pcall(MacroLoadout.Execute, plan, profileName)
+            if not success then
+                MacroLoadout.Status(Color3.fromRGB(210,65,65), tostring(message))
+                MacroLoadout.Notify(tostring(message))
+            end
+            finish()
+        end)
+    end
+    if #plan.Issues == 0 then run(); return end
+    MacroLoadout.Status(Color3.fromRGB(210,65,65), "Missing items or availability checks need attention.")
+    Window:Confirm({
+        Title="Continue using this loadout?", Width=540, Height=390,
+        Text=table.concat(plan.Issues, "\n")
+            .. "\n\nMissing units or orbs mean the macro maker's results—and a 100% win rate—aren't guaranteed."
+            .. "\n\nTo replace a missing unit, open the macro's JSON file in JSON Editor Online (jsoneditoronline.org) and change its saved unit name to the unit you want to use."
+            .. (not plan.Rebuild and "\n\nContinue will preserve your current team and only send orb requests for units already in their required slots." or ""),
+        Confirm="Continue Anyway", Cancel="Cancel", OnConfirm=run,
+        OnCancel=finish, OnDismiss=finish,
+    })
+end
+
+function MacroLoadout.BuildUI(section)
+    MacroLoadout.Button = section:Button({Text="Equip Macro Loadout", Callback=MacroLoadout.Start})
+    MacroLoadout.Description = section:Paragraph({Title="", Content="Equip Current Macro Units and Orbs"})
+    local button = MacroLoadout.Button.Instance
+    -- Facility hover changes the fill; keep the status color persistent.
+    button:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
+        if MacroLoadout.Color and button.BackgroundColor3 ~= MacroLoadout.Color then
+            button.BackgroundColor3 = MacroLoadout.Color
+        end
+    end)
+end
+
 function StartMacroRecord()
+    if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
     if Macros[Settings.macro_profile]["Macro"] == nil then Macros[Settings.macro_profile]["Macro"] = {} end
     if Macros[Settings.macro_profile]["Settings"] == nil then Macros[Settings.macro_profile]["Settings"] = {} end
     if Macros[Settings.macro_profile]["Map"] == nil then Macros[Settings.macro_profile]["Map"] = {} end
     if Macros[Settings.macro_profile]["Units"] == nil then Macros[Settings.macro_profile]["Units"] = {} end
     if is_lobby() then return end
+    MacroLoadout.Capture(Macros[Settings.macro_profile])
     local Units = game:GetService("Workspace"):WaitForChild("Unit")
     for _, unit in pairs(get_units()) do AddHooks(unit, GetUnitIndex(unit)) end
     print("Hooked Units In Workspace...")
@@ -1288,6 +1642,7 @@ function StopMacroRecord()
 end
 
 function StartMacroPlayback()
+    if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
     if is_lobby() then return end
     table.sort(Macros[Settings.macro_profile]["Macro"], function(a, b) return a["Time"] < b["Time"] end)
     CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
@@ -1460,10 +1815,6 @@ function OnGameEnd()
     end
 end
 
-function webhookbanner()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/Jeikaru/Roblox/main/astd-banner.lua"))()
-end
-
 function FpsBoost()
     loadstring(game:HttpGet("https://raw.githubusercontent.com/Jeikaru/Roblox/main/FpsBoost"))()
 end
@@ -1607,85 +1958,181 @@ function AutoSell()
     end
 end
 
-local function AutoBuffHelper(Units, unit, checks, ability_type, ability_name)
-    for _, check in pairs(checks) do
-        if check == "attack" then repeat task.wait() until not CheckAttackBuff(Units)
-        elseif check == "range" then repeat task.wait() until not CheckRangeBuff(Units) end
+-- Auto-buff scheduling: independent group clocks and exact upgrade-stage filtering.
+local BuffEngine = {Generation=0, MultipleBusy=false, IDs=setmetatable({}, {__mode="k"}), NextID=0}
+
+function BuffEngine.Effect(unit, name)
+    local head = unit:FindFirstChild("Head")
+    local gui = head and head:FindFirstChild("EffectBBGUI")
+    local frame = gui and gui:FindFirstChild("Frame")
+    local icon = frame and frame:FindFirstChild(name)
+    return icon ~= nil and icon.Visible == true
+end
+
+function BuffEngine.Matches(unit, name, config)
+    local owner = unit:FindFirstChild("Owner")
+    local move = unit:FindFirstChild("SpecialMove")
+    local wanted = config["Special Move Name"] or ""
+    return unit.Parent ~= nil and owner and tostring(owner.Value) == Player.Name
+        and unit.Name == name and move and move.Value ~= ""
+        and (wanted == "" or move.Value == wanted)
+end
+
+function BuffEngine.Units(name, config)
+    local result = {}
+    local folder = workspace:FindFirstChild("Unit")
+    for _, unit in ipairs(folder and folder:GetChildren() or {}) do
+        if BuffEngine.Matches(unit, name, config) then
+            if not BuffEngine.IDs[unit] then
+                BuffEngine.NextID = BuffEngine.NextID + 1
+                BuffEngine.IDs[unit] = BuffEngine.NextID
+            end
+            table.insert(result, unit)
+        end
     end
-    if ability_type == "Multiple" then
-        UseMultipleAbilitiesUnit(unit, "", ability_name)
-    else
-        UseAbilityUnit(unit, "")
+    table.sort(result, function(a,b) return BuffEngine.IDs[a] < BuffEngine.IDs[b] end)
+    return result
+end
+
+function BuffEngine.Ready(unit, group, name, config)
+    for _, member in ipairs(group) do
+        if not BuffEngine.Matches(member, name, config) then return false end
     end
+    local move = unit:FindFirstChild("SpecialMove")
+    local cooldown = move and move:FindFirstChild("Special_Enabled2")
+    if not cooldown or cooldown.Value or BuffEngine.Effect(unit, "StunImage") then return false end
+    for _, check in ipairs(config.Checks or {}) do
+        local effect = check == "attack" and "AttackImage" or check == "range" and "RangeImage"
+        if effect then
+            local all = true
+            for _, member in ipairs(group) do
+                if not BuffEngine.Effect(member, effect) then all = false; break end
+            end
+            if all then return false end
+        end
+    end
+    return true
+end
+
+function BuffEngine.Size(config)
+    if config.Mode == "Box" then return 4 end
+    if config.Mode == "Pair" then return 2 end
+    if config.Mode == "Cycle" then return math.clamp(math.floor(tonumber(config["Cycle Units"]) or 8),1,8) end
+    return 1
+end
+
+function BuffEngine.Timing(config, index)
+    local override = config.Mode == "Box" and type(config["Box Timings"]) == "table" and config["Box Timings"][index]
+    local time = tonumber(override and override.Time) or tonumber(config.Time) or 15
+    local delay = tonumber(override and override.Delay) or tonumber(config.Delay) or 0
+    return math.max(0.1,time), math.max(0,delay)
+end
+
+function BuffEngine.Send(unit, group, name, config, valid)
+    if not valid() or not BuffEngine.Ready(unit, group, name, config) then return false end
+    local input = game.ReplicatedStorage.Remotes.Input
+    -- Preserve the main source's default activation argument.
+    -- Special Move Name is only a filter; it is never sent as this argument.
+    local argument = ""
+    if config["Ability Type"] ~= "Multiple" then
+        input:FireServer("UseSpecialMove", unit, argument)
+        return true
+    end
+    if BuffEngine.MultipleBusy then return false end
+    local existing = GUI:FindFirstChild("MultipleAbilities")
+    -- Do not select an option from another unit's already-open menu.
+    if existing and existing.Enabled then return false end
+    BuffEngine.MultipleBusy = true
+    local success, sent = pcall(function()
+        input:FireServer("UseSpecialMove", unit, argument)
+        local deadline = os.clock() + 4
+        repeat
+            if not valid() or not BuffEngine.Matches(unit,name,config) then return false end
+            local menu = GUI:FindFirstChild("MultipleAbilities")
+            local frame = menu and menu:FindFirstChild("Frame")
+            if menu and menu.Enabled and frame and frame.Visible then
+                for _, button in ipairs(frame:GetChildren()) do
+                    local label = button:FindFirstChild("TextLabel")
+                    if button:IsA("GuiButton") and label and label.Text == config["Ability Name"] then
+                        if valid() and BuffEngine.Matches(unit,name,config) then
+                            firesignal(button.Activated)
+                            return true
+                        end
+                    end
+                end
+            end
+            task.wait(0.1)
+        until os.clock() >= deadline
+        return false
+    end)
+    BuffEngine.MultipleBusy = false
+    if not success then warn("[Auto Buff] Multiple ability: " .. tostring(sent)) end
+    return success and sent
 end
 
 function AutoBuff()
-    for k, v in pairs(Settings.auto_buff_units) do
-        task.spawn(function()
-            while Settings.auto_buff do
-                local Units = {}
-                for _, unit in pairs(get_units()) do
-                    if unit.Name == k and unit:WaitForChild("SpecialMove").Value ~= "" then
-                        table.insert(Units, unit)
+    BuffEngine.Generation = BuffEngine.Generation + 1
+    local generation = BuffEngine.Generation
+    local states = {}
+    local clock, last = 0, os.clock()
+    local function active() return Settings.auto_buff and generation == BuffEngine.Generation end
+    while active() do
+        local now = os.clock()
+        local speed = game.ReplicatedStorage:FindFirstChild("SpeedUP")
+        clock = clock + (now-last) * math.max(0,tonumber(speed and speed.Value) or 1)
+        last = now
+        local live = {}
+        for name, config in pairs(Settings.auto_buff_units) do
+            if type(config) == "table" then
+                local units = BuffEngine.Units(name,config)
+                local size = BuffEngine.Size(config)
+                local fingerprint = game:GetService("HttpService"):JSONEncode(config)
+                for index=1,math.floor(#units/size) do
+                    local group, ids = {}, {}
+                    for offset=1,size do
+                        local unit = units[(index-1)*size+offset]
+                        group[offset] = unit
+                        ids[offset] = tostring(BuffEngine.IDs[unit])
                     end
-                end
-                local checks = v["Checks"]
-                local ability_type = v["Ability Type"]
-                local ability_name = nil
-                local time = v["Time"]
-                if ability_type == "Multiple" then ability_name = v["Ability Name"] end
-                if v["Mode"] == "Box" then
-                    local Units2 = {}
-                    if #Units > 4 and #Units < 8 then
-                        repeat task.wait(1); table.remove(Units, #Units) until #Units == 4
+                    local key = name .. ":" .. index
+                    local signature = fingerprint .. ":" .. table.concat(ids,",")
+                    live[key] = true
+                    local state = states[key]
+                    if not state or state.Signature ~= signature then
+                        state = {Signature=signature, Cursor=1, Next=clock, Busy=false}
+                        states[key] = state
                     end
-                    if #Units == 8 then
-                        for i = 1, 4 do table.insert(Units2, Units[1]); table.remove(Units, 1) end
-                    end
-                    if #Units == 4 or #Units2 == 4 then
-                        for i = 1, 4 do
-                            if not Settings.auto_buff or Settings.auto_buff_units[k] == nil then break end
-                            if #Units == 4 then AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name) end
-                            if #Units2 == 4 then AutoBuffHelper(Units2, Units2[i], checks, ability_type, ability_name) end
-                            Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
+                    if not state.Busy and clock >= state.Next then
+                        local unit = group[state.Cursor]
+                        local function valid()
+                            return active() and states[key] == state
+                                and Settings.auto_buff_units[name] == config
+                                and game:GetService("HttpService"):JSONEncode(config) == fingerprint
                         end
-                    end
-                elseif v["Mode"] == "Pair" then
-                    if #Units >= 2 then
-                        for i, v in pairs(Units) do
-                            if i % 2 ~= 0 then AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name) end
-                        end
-                        Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
-                        for i, v in pairs(Units) do
-                            if i % 2 == 0 then AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name) end
-                        end
-                        Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
-                    end
-                elseif v["Mode"] == "Spam" then
-                    for i, unit in pairs(Units) do
-                        AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name)
-                    end
-                    Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil)
-                elseif v["Mode"] == "Cycle" then
-                    local cycle_units = 8
-                    if v["Cycle Units"] ~= nil then cycle_units = v["Cycle Units"] end
-                    if #Units >= cycle_units then
-                        for i, v in pairs(Units) do
-                            if Settings.auto_buff and Settings.auto_buff_units[k] ~= nil and #Units >= cycle_units then
-                                AutoBuffHelper(Units, Units[i], checks, ability_type, ability_name)
-                            else
-                                break
-                            end
-                            Delay(time, Settings.auto_buff and Settings.auto_buff_units[k] ~= nil and #Units >= cycle_units)
+                        if BuffEngine.Ready(unit,group,name,config) then
+                            state.Busy = true
+                            task.spawn(function()
+                                local ok, sent = pcall(BuffEngine.Send,unit,group,name,config,valid)
+                                if valid() then
+                                    if ok and sent then
+                                        local time, delay = BuffEngine.Timing(config,index)
+                                        state.Cursor = state.Cursor % #group + 1
+                                        state.Next = clock + time + (state.Cursor == 1 and delay or 0)
+                                    else state.Next = clock + 0.5 end
+                                end
+                                state.Busy = false
+                                if not ok then warn("[Auto Buff] " .. tostring(sent)) end
+                            end)
                         end
                     end
                 end
-                if v["Delay"] ~= nil then Delay(v["Delay"], Settings.auto_buff) end
-                task.wait()
             end
-        end)
+        end
+        for key in pairs(states) do if not live[key] then states[key] = nil end end
+        task.wait(0.1)
     end
 end
+
 
 local isEvolvingEXP = false
 
@@ -1742,6 +2189,7 @@ function AutoEvolveEXP()
 end
 
 function AutoTower()
+    while MacroLoadout.Busy do task.wait(0.2) end
     local player = game:GetService("Players").LocalPlayer
     local towerteleporter = workspace.Queue.InteractionsV2:FindFirstChild("Script633")
     local function UseTeleporter(teleporter)
@@ -1768,6 +2216,7 @@ function AutoTower()
 end
 
 function AutoJoinGame()
+    while MacroLoadout.Busy do task.wait(0.2) end
     if Settings.auto_join_mode == "Story" then DetectStoryLevel() end
     local function UseTeleporter(teleporter)
         if teleporter ~= nil then
@@ -1960,7 +2409,6 @@ if get_world() ~= -1 and get_world() ~= -2 then
         task.wait(1)
         if Settings.auto_join_game then task.spawn(AutoJoinGame) end
         if Settings.auto_join_tower then task.spawn(AutoTower) end
-        task.spawn(webhookbanner)
     end
     if Settings.auto_skip_gui then task.spawn(AutoSkipGUI) end
     if Settings.FPSBoost then task.spawn(FpsBoost) end
@@ -2098,13 +2546,14 @@ function InitializeUI()
     local function MainSettings()
         local Main = Window:Tab("Main")
         local MainSection
-        MainSection = Main:Full("Gameplay Scripts")
+        MainSection = Main:Section("Gameplay Scripts", 1)
         local AutoBuffToggle = AddToggle(MainSection, {
             Text = "Auto Unit Buffing",
             Default = Settings.auto_buff,
             Flag = "auto_buff",
             Callback = function(value)
                 Settings.auto_buff = value; Save()
+                if not value then BuffEngine.Generation = BuffEngine.Generation + 1 end
                 if not is_lobby() and value then AutoBuff() end
             end
         })
@@ -2126,7 +2575,7 @@ function InitializeUI()
                 if not is_lobby() and value then AutoSell() end
             end
         })
-        MainSection = Main:Full("GUI Scripts")
+        MainSection = Main:Section("GUI Scripts", 2)
         local AutoVoteExtremeToggle = AddToggle(MainSection, {
             Text = "Auto Vote Extreme Mode",
             Default = Settings.auto_vote_extreme,
@@ -2163,7 +2612,7 @@ function InitializeUI()
                 if not is_lobby() and value then AutoBattle() end
             end
         })
-        MainSection = Main:Full("Game End Scripts")
+        MainSection = Main:Section("Game End Scripts", 1)
         local AutoReplayToggle = AddToggle(MainSection, {
             Text = "Auto Replay",
             Default = Settings.auto_replay,
@@ -2182,12 +2631,26 @@ function InitializeUI()
                 if not is_lobby() and value then AutoNextStory() end
             end
         })
+        local function AutomationSettings()
+            MainSection = Main:Section("Automation", 2)
+            MainSection:Paragraph({
+                Title = "Automation",
+                Content = "Automatically upgrades/sells units and turns on autobattle."
+            })
+            MainSection:Input({Text = "Auto Battle Gems", Placeholder = tostring(Settings.auto_battle_gems), Flag = "auto_battle_gems", Callback = function(text) Settings.auto_battle_gems = text; Save() end})
+            MainSection:Input({Text = "Auto Upgrade Money", Placeholder = tostring(Settings.auto_upgrade_money), Flag = "auto_upgrade_money", Callback = function(text) Settings.auto_upgrade_money = text; Save() end})
+            MainSection:Input({Text = "Auto Upgrade Wave", Placeholder = tostring(Settings.auto_upgrade_wave), Flag = "auto_upgrade_wave", Callback = function(text) Settings.auto_upgrade_wave = text; Save() end})
+            MainSection:Input({Text = "Stop Auto Upgrade At Wave", Placeholder = tostring(Settings.auto_upgrade_wave_stop), Flag = "auto_upgrade_wave_stop", Callback = function(text) Settings.auto_upgrade_wave_stop = text; Save() end})
+            MainSection:Input({Text = "Auto Sell At Wave", Placeholder = tostring(Settings.auto_upgrade_wave_sell), Flag = "auto_upgrade_wave_sell", Callback = function(text) Settings.auto_upgrade_wave_sell = text; Save() end})
+        end
+
+        AutomationSettings()
     end
 
     local function MacroSettings()
         local Macro = Window:Tab("Macro")
         local MacroSection
-        MacroSection = Macro:Full("Macros")
+        MacroSection = Macro:Section("Macros", 1)
 
         local MacroProfileDropdown = MacroSection:Dropdown({
             Text = "Selected Profile",
@@ -2202,6 +2665,8 @@ function InitializeUI()
                 Save()
             end
         })
+
+        MacroLoadout.BuildUI(MacroSection)
 
         local MacroProfileInfo = MacroSection:Paragraph({
             Title = "Current Profile Info",
@@ -2221,23 +2686,35 @@ function InitializeUI()
             end
         end)
 
-        MacroSection = Macro:Full("Controls")
-        local RecordMacroToggle = AddToggle(MacroSection, {
+        MacroSection = Macro:Section("Controls", 2)
+        local RecordMacroToggle
+        RecordMacroToggle = AddToggle(MacroSection, {
             Text = "Record Macro",
             Default = Settings.macro_record,
             Flag = "macro_record",
             Callback = function(value)
+                if MacroLoadout.Busy then
+                    if RecordMacroToggle then RecordMacroToggle:Set(Settings.macro_record, true) end
+                    MacroLoadout.Notify("Wait for loadout setup to finish before recording.")
+                    return
+                end
                 Settings.macro_record = value; Save()
                 if not is_lobby() then
                     if value then StartMacroRecord() else StopMacroRecord() end
                 end
             end
         })
-        local PlaybackMacroToggle = AddToggle(MacroSection, {
+        local PlaybackMacroToggle
+        PlaybackMacroToggle = AddToggle(MacroSection, {
             Text = "Playback Macro",
             Default = Settings.macro_playback,
             Flag = "macro_playback",
             Callback = function(value)
+                if MacroLoadout.Busy then
+                    if PlaybackMacroToggle then PlaybackMacroToggle:Set(Settings.macro_playback, true) end
+                    MacroLoadout.Notify("Wait for loadout setup to finish before playback.")
+                    return
+                end
                 Settings.macro_playback = value; Save()
                 if not is_lobby() then
                     if value then
@@ -2308,7 +2785,7 @@ function InitializeUI()
             Callback = function() if CurrentStep ~= nil then CurrentStep = nil end end
         })
 
-        MacroSection = Macro:Full("Profile Management")
+        MacroSection = Macro:Section("Profile Management", 1)
         local ProfileNameInput = ""
         MacroSection:Input({
             Text = "New macro profile name",
@@ -2380,7 +2857,7 @@ function InitializeUI()
             end
         })
 
-        MacroSection = Macro:Full("Recording Options")
+        MacroSection = Macro:Section("Recording Options", 2)
         MacroSection:Paragraph({
             Title = "Recording Options",
             Content = "These settings will affect any recorded macro and should not be changed unless you have any issues with macro recording. Check if you have any issues using playback offset first before playing with recording offset."
@@ -2394,7 +2871,7 @@ function InitializeUI()
             Callback = function(value) Settings.macro_record_time_offset = value; Save() end
         })
 
-        MacroSection = Macro:Full("Playback Options")
+        MacroSection = Macro:Section("Playback Options", 1)
         MacroSection:Paragraph({
             Title = "Playback Options",
             Content = "These settings will only apply during macro playback and will not affect any previously recorded macros."
@@ -2438,7 +2915,7 @@ function InitializeUI()
             Callback = function(value) Settings.macro_playback_search_delay = value; Save() end
         })
 
-        MacroSection = Macro:Full("Macro Options")
+        MacroSection = Macro:Section("Macro Options", 2)
         MacroSection:Paragraph({
             Title = "Macro Options",
             Content = "You should leave all of these toggles on, otherwise your macro will not work properly."
@@ -2463,7 +2940,7 @@ function InitializeUI()
         AddToggle(MacroSection, {Text = "Auto Skip Wave", Default = Settings.macro_autoskipwave, Flag = "macro_autoskipwave", Callback = function(v) Settings.macro_autoskipwave = v; Save() end})
         AddToggle(MacroSection, {Text = "Speed Change", Default = Settings.macro_speedchange, Flag = "macro_speedchange", Callback = function(v) Settings.macro_speedchange = v; Save() end})
 
-        MacroSection = Macro:Full("Ability Blacklist Configuration")
+        MacroSection = Macro:Section("Ability Blacklist Configuration", 1)
         MacroSection:Paragraph({
             Title = "Ability Blacklist",
             Content = "The ability blacklist allows you to filter out which characters you want to not have the macro record and/or playback."
@@ -2528,7 +3005,7 @@ function InitializeUI()
         })
 
         if not is_lobby() then
-            MacroSection = Macro:Full("Offset Settings")
+            MacroSection = Macro:Section("Offset Settings", 2)
             MacroSection:Paragraph({
                 Title = "CAUTION",
                 Content = "This is an experimental feature. All changes are irreversible, so please use with caution."
@@ -2565,7 +3042,7 @@ function InitializeUI()
         local AdvancedSettingsTabSection
 
         local function AutoUnitBuffingSettings()
-            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Auto Unit Buffing Settings")
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Section("Auto Unit Buffing Settings", 1)
             AdvancedSettingsTabSection:Paragraph({
                 Title = "Auto Unit Buffing Settings",
                 Content = "Select a configured unit under Units, click Edit Auto Unit Buffing Settings, change the fields, then Save Auto Unit Buffing Settings. Existing units read edits on a subsequent buff loop; newly added units require a rejoin and script execution."
@@ -2579,7 +3056,13 @@ function InitializeUI()
                     local content = ""
                     for k, v in pairs(Settings.auto_buff_units[value]) do
                         if type(v) == "table" then
-                            content = content .. string.format("%s: %s\n", tostring(k), table.concat(v, ", "))
+                            local parts = {}
+                            for i, item in ipairs(v) do
+                                if type(item)=="table" then
+                                    table.insert(parts, "Box " .. i .. " (time " .. tostring(item.Time) .. ", delay " .. tostring(item.Delay) .. ")")
+                                else table.insert(parts,tostring(item)) end
+                            end
+                            content = content .. string.format("%s: %s\n", tostring(k), table.concat(parts, "; "))
                         else
                             content = content .. string.format("%s: %s\n", tostring(k), tostring(v))
                         end
@@ -2636,16 +3119,48 @@ function InitializeUI()
             -- Multi-select for buff checks
             local AutoBuffChecks = AdvancedSettingsTabSection:Dropdown({
                 Text = "Auto Buff Checks",
-                Options = {"Attack Buff", "Range Buff", "Multiple Abilities"},
+                Options = {"Attack Buff", "Range Buff"},
                 Default = {"Attack Buff", "Range Buff"},
                 Multi = true,
                 Flag = "autobuff_checks",
                 Callback = function(options) end
             })
 
+            local AutoBuffTypeControl = AdvancedSettingsTabSection:Dropdown({
+                Text="Ability Type", Options={"Normal", "Multiple"}, Default="Normal",
+                Multi=false, Flag="autobuff_ability_type", Callback=function() end,
+            })
+            local AnyMove = "Any available ability (legacy)"
+            local AutoBuffMoveControl = AdvancedSettingsTabSection:Dropdown({
+                Text="Normal / Primary Ability", Options={AnyMove}, Default=AnyMove,
+                Multi=false, Flag="autobuff_special_move", Callback=function() end,
+            })
+            local AutoBuffExactControl = AdvancedSettingsTabSection:Input({
+                Text="Exact Ability Name (optional override)", Default="",
+                Placeholder="Exact SpecialMove name", Flag="autobuff_exact_move", Callback=function() end,
+            })
+            AdvancedSettingsTabSection:Button({
+                Text="Refresh Detected Abilities",
+                Callback=function()
+                    local options, seen = {AnyMove}, {[AnyMove]=true}
+                    for _, unit in ipairs(get_units()) do
+                        local move = unit:FindFirstChild("SpecialMove")
+                        if move and type(move.Value)=="string" and move.Value~="" and not seen[move.Value] then
+                            seen[move.Value]=true; table.insert(options,move.Value)
+                        end
+                    end
+                    local selected=AutoBuffMoveControl:Get()
+                    if type(selected)=="table" then selected=selected[1] end
+                    if selected and not seen[selected] then table.insert(options,selected) end
+                    AutoBuffMoveControl:SetOptions(options)
+                    AutoBuffMoveControl:Set(selected or AnyMove,true)
+                end,
+            })
+            AdvancedSettingsTabSection:Paragraph({Title="Ability matching and boxes",
+                Content="An exact primary ability name only runs while SpecialMove matches it, including after upgrades. Multiple selects the named menu option. Box uses independent groups of four in detection order; each box has its own timer. Incomplete groups wait. These groups are not based on map geometry."})
             local AutoBuffMultipleAbilitiesNameInput
             local AutoBuffAbilityNameControl = AdvancedSettingsTabSection:Input({
-                Text = "Multiple Abilities: Ability Name",
+                Text = "Multiple Abilities: Menu Option Name",
                 Placeholder = "Buff Ability",
                 Flag = "autobuff_ability_name",
                 Callback = function(text) AutoBuffMultipleAbilitiesNameInput = text end
@@ -2680,6 +3195,14 @@ function InitializeUI()
                 Callback = function(value) AutoBuffDelay = value end
             })
 
+            local AutoBuffBox2Time = AdvancedSettingsTabSection:Input({
+                Text="Box 2 Ability Time", Default="", Placeholder="Blank = Ability Time",
+                Flag="autobuff_box2_time", Callback=function() end,
+            })
+            local AutoBuffBox2Delay = AdvancedSettingsTabSection:Input({
+                Text="Box 2 Post Loop Delay", Default="", Placeholder="Blank = Post Loop Delay",
+                Flag="autobuff_box2_delay", Callback=function() end,
+            })
             local editingUnit
             local EditStatus = AdvancedSettingsTabSection:Paragraph({
                 Title = "Edit Auto Unit Buffing Settings",
@@ -2701,19 +3224,40 @@ function InitializeUI()
                 if not time or time ~= time or time == math.huge or time <= 0 then
                     BuffNotice("Ability Time must be a finite number greater than zero."); return nil
                 end
-                local checks, abilityType = {}, "Normal"
+                local checks = {}
+                local abilityType = AutoBuffTypeControl:Get()
+                if type(abilityType)=="table" then abilityType=abilityType[1] end
+                if abilityType~="Normal" and abilityType~="Multiple" then
+                    BuffNotice("Choose Normal or Multiple."); return nil
+                end
                 local chosen = AutoBuffChecks:Get()
                 if type(chosen) ~= "table" then chosen = {chosen} end
                 for _, check in ipairs(chosen) do
                     if check == "Attack Buff" then table.insert(checks, "attack")
-                    elseif check == "Range Buff" then table.insert(checks, "range")
-                    elseif check == "Multiple Abilities" then abilityType = "Multiple" end
+                    elseif check == "Range Buff" then table.insert(checks, "range") end
                 end
                 local abilityName = AutoBuffAbilityNameControl:Get():match("^%s*(.-)%s*$")
                 if abilityType == "Multiple" and abilityName == "" then
                     BuffNotice("Enter an ability name when Multiple Abilities is selected."); return nil
                 end
+                local move = AutoBuffExactControl:Get():match("^%s*(.-)%s*$")
+                if move=="" then
+                    move=AutoBuffMoveControl:Get()
+                    if type(move)=="table" then move=move[1] end
+                    if move==AnyMove then move="" end
+                end
+                local boxTimeText=AutoBuffBox2Time:Get():match("^%s*(.-)%s*$")
+                local boxDelayText=AutoBuffBox2Delay:Get():match("^%s*(.-)%s*$")
+                local boxTime, boxDelay=time, AutoBuffDelayControl.Value
+                if boxTimeText~="" then boxTime=tonumber(boxTimeText) end
+                if boxDelayText~="" then boxDelay=tonumber(boxDelayText) end
+                if not boxTime or boxTime~=boxTime or boxTime==math.huge or boxTime<=0
+                    or not boxDelay or boxDelay~=boxDelay or boxDelay==math.huge or boxDelay<0 then
+                    BuffNotice("Box 2 time must be positive and its delay nonnegative; both must be finite."); return nil
+                end
                 return {
+                    ["Special Move Name"] = move or "",
+                    ["Box Timings"] = {{Time=time, Delay=AutoBuffDelayControl.Value}, {Time=boxTime, Delay=boxDelay}},
                     ["Mode"] = mode,
                     ["Checks"] = checks,
                     ["Ability Type"] = abilityType,
@@ -2737,7 +3281,14 @@ function InitializeUI()
                         if check == "attack" then table.insert(checks, "Attack Buff")
                         elseif check == "range" then table.insert(checks, "Range Buff") end
                     end
-                    if config["Ability Type"] == "Multiple" then table.insert(checks, "Multiple Abilities") end
+                    AutoBuffTypeControl:Set(config["Ability Type"] or "Normal",true)
+                    local selectedMove=config["Special Move Name"] or ""
+                    AutoBuffMoveControl:SetOptions(selectedMove~="" and {AnyMove,selectedMove} or {AnyMove})
+                    AutoBuffMoveControl:Set(selectedMove~="" and selectedMove or AnyMove,true)
+                    AutoBuffExactControl:Set("",true)
+                    local box2=type(config["Box Timings"])=="table" and config["Box Timings"][2]
+                    AutoBuffBox2Time:Set(box2 and tostring(box2.Time or "") or "",true)
+                    AutoBuffBox2Delay:Set(box2 and tostring(box2.Delay or "") or "",true)
                     AutoBuffModeDropdown:Set(config["Mode"] or "Box", true)
                     AutoBuffChecks:Set(checks, true)
                     AutoBuffAbilityNameControl:Set(config["Ability Name"] or "", true)
@@ -2812,7 +3363,7 @@ function InitializeUI()
         end
 
         local function ActionQueueSettings()
-            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Action Queue Settings")
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Section("Action Queue Settings", 2)
             AdvancedSettingsTabSection:Paragraph({
                 Title = "Action Queue",
                 Content = "The action queue ensures remotes are executed successfully despite lag or insufficient resources."
@@ -2825,7 +3376,7 @@ function InitializeUI()
                 Flag = "action_queue_remote_fire_delay",
                 Callback = function(value) Settings.action_queue_remote_fire_delay = value; Save() end
             })
-            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Remote Refiring")
+            AdvancedSettingsTabSection = AdvancedSettingsTab:Section("Remote Refiring", 2)
             AdvancedSettingsTabSection:Paragraph({
                 Title = "What is remote refiring?",
                 Content = "Remote refiring calls the remote repeatedly until the action succeeds."
@@ -2854,34 +3405,20 @@ function InitializeUI()
             })
         end
 
-        local function AutomationSettings()
-            AdvancedSettingsTabSection = AdvancedSettingsTab:Full("Automation")
-            AdvancedSettingsTabSection:Paragraph({
-                Title = "Automation",
-                Content = "Automatically upgrades/sells units and turns on autobattle."
-            })
-            AdvancedSettingsTabSection:Input({Text = "Auto Battle Gems", Placeholder = tostring(Settings.auto_battle_gems), Flag = "auto_battle_gems", Callback = function(text) Settings.auto_battle_gems = text; Save() end})
-            AdvancedSettingsTabSection:Input({Text = "Auto Upgrade Money", Placeholder = tostring(Settings.auto_upgrade_money), Flag = "auto_upgrade_money", Callback = function(text) Settings.auto_upgrade_money = text; Save() end})
-            AdvancedSettingsTabSection:Input({Text = "Auto Upgrade Wave", Placeholder = tostring(Settings.auto_upgrade_wave), Flag = "auto_upgrade_wave", Callback = function(text) Settings.auto_upgrade_wave = text; Save() end})
-            AdvancedSettingsTabSection:Input({Text = "Stop Auto Upgrade At Wave", Placeholder = tostring(Settings.auto_upgrade_wave_stop), Flag = "auto_upgrade_wave_stop", Callback = function(text) Settings.auto_upgrade_wave_stop = text; Save() end})
-            AdvancedSettingsTabSection:Input({Text = "Auto Sell At Wave", Placeholder = tostring(Settings.auto_upgrade_wave_sell), Flag = "auto_upgrade_wave_sell", Callback = function(text) Settings.auto_upgrade_wave_sell = text; Save() end})
-        end
-
         AutoUnitBuffingSettings()
         ActionQueueSettings()
-        AutomationSettings()
     end
 
     local function LobbySettings()
         local Lobby = Window:Tab("Lobby")
         local LobbySection
-        LobbySection = Lobby:Full("Lobby Scripts")
+        LobbySection = Lobby:Section("Lobby Scripts", 1)
         AddToggle(LobbySection, {Text = "Auto Join Game", Default = Settings.auto_join_game, Flag = "auto_join_game", Callback = function(value) Settings.auto_join_game = value; Save(); if value and is_lobby() then task.spawn(AutoJoinGame) end end})
         AddToggle(LobbySection, {Text = "Auto Join Tower", Default = Settings.auto_join_tower, Flag = "auto_join_tower", Callback = function(value) Settings.auto_join_tower = value; Save(); if value and is_lobby() then task.spawn(AutoTower) end end})
         AddToggle(LobbySection, {Text = "Auto Evolve EXP", Default = Settings.auto_evolve_exp, Flag = "auto_evolve_exp", Callback = function(value) Settings.auto_evolve_exp = value; Save(); if value and is_lobby() then task.spawn(AutoEvolveEXP) end end})
         AddToggle(LobbySection, {Text = "Auto Click Popup", Default = Settings.auto_skip_gui, Flag = "auto_skip_gui", Callback = function(value) Settings.auto_skip_gui = value; Save(); if value then task.spawn(AutoSkipGUI) end end})
 
-        LobbySection = Lobby:Full("Auto Join Settings")
+        LobbySection = Lobby:Section("Auto Join Settings", 2)
         LobbySection:Slider({Text = "Delay", Min = 0, Max = 60, Step = 1, Decimals = 0, Default = Settings.auto_join_delay, Flag = "auto_join_delay", Callback = function(value) Settings.auto_join_delay = value; Save() end})
         LobbySection:Dropdown({
             Text = "Mode",
@@ -2962,12 +3499,26 @@ function InitializeUI()
                 task.wait(2)
             end
         end)
+
+        if get_world() ~= -1 and get_world() ~= -2 then
+            LobbySection = Lobby:Section("World Teleports", 1)
+            local function UseWorldTeleporter(Teleporter)
+                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter, 0)
+                task.wait()
+                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter, 1)
+            end
+            if get_world() == 1 then
+                LobbySection:Button({Text = "Teleport to World 2", Callback = function() UseWorldTeleporter(get_world_teleporter()) end})
+            elseif get_world() == 2 then
+                LobbySection:Button({Text = "Teleport to World 1", Callback = function() UseWorldTeleporter(get_world_teleporter()) end})
+            end
+        end
     end
 
     local function WebhookSettings()
         local Webhook = Window:Tab("Webhooks")
         local WebhookSection
-        WebhookSection = Webhook:Full("Settings")
+        WebhookSection = Webhook:Section("Settings", 1)
         WebhookSection:Input({Text = "URL", Placeholder = Settings.webhook_url, Flag = "webhook_url", Callback = function(text) Settings.webhook_url = text; Save() end})
         WebhookSection:Input({Text = "Discord ID", Placeholder = Settings.webhook_discord_id, Flag = "webhook_discord_id", Callback = function(text) Settings.webhook_discord_id = text; Save() end})
         AddToggle(WebhookSection, {Text = "Ping User", Default = Settings.webhook_ping_user, Flag = "webhook_ping_user", Callback = function(value) Settings.webhook_ping_user = value; Save() end})
@@ -2978,7 +3529,7 @@ function InitializeUI()
             Flag = "webhook_color",
             Callback = function(value) Settings.webhook_color = value:ToHex(); Save() end
         })
-        WebhookSection = Webhook:Full("Toggles")
+        WebhookSection = Webhook:Section("Toggles", 2)
         AddToggle(WebhookSection, {Text = "Send webhook on game end", Default = Settings.webhook_end_game, Flag = "webhook_end_game", Callback = function(value) Settings.webhook_end_game = value; Save() end})
         AddToggle(WebhookSection, {Text = "Send webhook after exp evolve", Default = Settings.webhook_exp_evolve, Flag = "webhook_exp_evolve", Callback = function(value) Settings.webhook_exp_evolve = value; Save() end})
     end
@@ -2986,7 +3537,7 @@ function InitializeUI()
     local function MiscellaneousSettings()
         local Miscellaneous = Window:Tab("Miscellaneous")
         local MiscellaneousSection
-        MiscellaneousSection = Miscellaneous:Full("Game Settings")
+        MiscellaneousSection = Miscellaneous:Section("Game Settings", 1)
         AddToggle(MiscellaneousSection, {Text = "FPS Boost", Default = Settings.fps_boost, Flag = "fps_boost", Callback = function(value) Settings.fps_boost = value; Save() end})
         AddToggle(MiscellaneousSection, {
             Text = "Anti-AFK",
@@ -3034,23 +3585,16 @@ function InitializeUI()
                     if Settings.anonymous_mode then AnonMode() end
                 end
             })
-            MiscellaneousSection = Miscellaneous:Full("World Teleports")
-            local function UseWorldTeleporter(Teleporter)
-                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter, 0)
-                task.wait()
-                firetouchinterest(Player.Character.HumanoidRootPart, Teleporter, 1)
-            end
-            if get_world() == 1 then
-                MiscellaneousSection:Button({Text = "Teleport to World 2", Callback = function() UseWorldTeleporter(get_world_teleporter()) end})
-            elseif get_world() == 2 then
-                MiscellaneousSection:Button({Text = "Teleport to World 1", Callback = function() UseWorldTeleporter(get_world_teleporter()) end})
-            end
         end
-        MiscellaneousSection = Miscellaneous:Full("Reset")
+        MiscellaneousSection = Miscellaneous:Section("Reset", 2)
         MiscellaneousSection:Button({
             Text = "Reset settings to default",
             Callback = function()
-                Settings = DefaultSettings; Save()
+                local resetSettings = DeepCopy(DefaultSettings)
+                resetSettings.UpdateKey = Settings.UpdateKey
+                resetSettings.UpdateShownAt = Settings.UpdateShownAt
+                resetSettings.UpdateLog = Settings.UpdateLog
+                Settings = resetSettings; Save()
                 Library:Notify({Title = "Reset", Text = "Settings restored to default! Rejoin or re-execute to apply.", Duration = 6.5, Icon = "info"})
             end
         })
@@ -3076,6 +3620,7 @@ function InitializeUI()
     CreateMiniGUI()
     CreateHideButtonGUI()
     Library:ClearDirty()
+    ShowUpdateLog()
 end
 
 InitializeUI()
@@ -3087,7 +3632,7 @@ end, function(err)
     return debug.traceback(tostring(err), 2)
 end)
 currentSession.Loading = false
-
+print("yes work:>")
 if not started then
 
     if not currentSession.Library and sessionEnvironment[sessionKey] == currentSession then
