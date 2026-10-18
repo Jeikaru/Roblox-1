@@ -2008,6 +2008,7 @@ function SeamlessPlayback()
         while GUI.HUD.ModeVoteFrame.Visible
             and Settings.seamless_macro
             and seamlessGeneration == watcherId do
+            wait(5)
             Event:FireServer("VoteSkipTimer")
             task.wait(1)
         end
