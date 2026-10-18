@@ -1,7 +1,7 @@
 if not game:IsLoaded() then game.Loaded:Wait() end
 if game.GameId ~= 1720936166 then return end
 print("hi work pls")
--- Share one running instance across repeated executions in this session.
+
 local sessionEnvironment = (getgenv and getgenv()) or shared
 local sessionKey = "KarmaPandaASTD_FacilitySession"
 local previousSession = sessionEnvironment[sessionKey]
@@ -220,7 +220,7 @@ local DefaultSettings = {
         ["Brook6"] = {["Mode"] = "Box", ["Checks"] = {"attack", "range"}, ["Ability Type"] = "Normal", ["Time"] = 13},
         ["Kisuke6"] = {["Mode"] = "Pair", ["Checks"] = {"attack", "range"}, ["Ability Type"] = "Multiple", ["Ability Name"] = "Buff Ability", ["Time"] = 13},
         ["Rayleigh"] = {["Mode"] = "Box", ["Checks"] = {"attack"}, ["Ability Type"] = "Normal", ["Time"] = 13},
-        ["Homura7"] = {["Mode"] = "Cycle", ["Checks"] = {}, ["Ability Type"] = "Normal", ["Cycle Units"] = 4, ["Time"] = 10, ["Delay"] = 1},
+        ["Homura7"] = {["Ability Name"] = "Time-Freezing Sands II", ["Checks"] = {}, ["Special Move Name"] = "Multiple Abilities", ["Time"] = 10, ["Cycle Units"] = 4,["Mode"] = "Cycle", ["Delay"] = 0, ["Ability Type"] = "Multiple"},
         ["Merlin6"] = {["Time"] = 13, ["Checks"] = {"attack", "range"}, ["Mode"] = "Box", ["Ability Type"] = "Normal"},
         ["Gojo7"] = {["Time"] = 9.5, ["Checks"] = {""}, ["Mode"] = "Box", ["Delay"] = 0, ["Ability Type"] = "Normal"},
         ["Metal Cooler"] = {["Time"] = 21, ["Checks"] = {""}, ["Mode"] = "Spam", ["Delay"] = 0.5, ["Ability Type"] = "Normal"},
@@ -968,13 +968,32 @@ end
 
 local function UseMultipleAbilitiesGUI(ability_name)
     task.spawn(function()
-        local gui = GUI:WaitForChild("MultipleAbilities")
-        for k, v in pairs(gui:WaitForChild("Frame"):GetChildren()) do
-            if v.Name == "ImageButton" then
-                local text = v:WaitForChild("TextLabel")
-                if text.Text == ability_name then firesignal(v.Activated); break end
+        local gui = GUI:WaitForChild("MultipleAbilities", 15)
+        if not gui then
+            warn("MultipleAbilities GUI not found")
+            return
+        end
+
+        local frame = gui:WaitForChild("Frame", 15)
+        if not frame then
+            warn("MultipleAbilities Frame not found")
+            return
+        end
+
+        for _, abilityFrame in ipairs(frame:GetChildren()) do
+            local button = abilityFrame:FindFirstChild("ImageButton")
+
+            if button and button:IsA("ImageButton") then
+                local text = button:FindFirstChild("TextLabel")
+
+                if text and text.Text == ability_name then
+                    firesignal(button.Activated)
+                    return
+                end
             end
         end
+
+        warn("Multiple ability not found:", ability_name)
     end)
 end
 
@@ -1219,21 +1238,43 @@ local function HookMultipleAbilitiesGUI()
     local function Hook(c)
         if c.Name == "MultipleAbilities" then
             local Frame = c:WaitForChild("Frame")
-            repeat task.wait() until #Frame:GetChildren() > 1
-            for k, v in pairs(Frame:GetChildren()) do
-                if v.Name == "ImageButton" then
-                    local connection = v.MouseButton1Click:Connect(function()
-                        local text = v:WaitForChild("TextLabel")
-                        if Settings.macro_record and Settings.macro_ability then
-                            InsertToMacro({
-                                ["Time"] = MacroRecordElapsedTime(),
-                                ["Remote"] = {[1] = "MultipleAbilities"},
-                                ["Parameter"] = {["Ability Name"] = text.Text}
-                            })
-                        end
-                    end)
+            local HookedButtons = {}
+
+            local function HookAbilityContainer(abilityFrame)
+                local button = abilityFrame:FindFirstChild("ImageButton")
+
+                if not button or not button:IsA("ImageButton") then
+                    return
                 end
+
+                if HookedButtons[button] then
+                    return
+                end
+
+                HookedButtons[button] = true
+
+                button.Activated:Connect(function()
+                    local text = button:FindFirstChild("TextLabel")
+
+                    if Settings.macro_record and Settings.macro_ability and text then
+                        InsertToMacro({
+                            ["Time"] = MacroRecordElapsedTime(),
+                            ["Remote"] = {[1] = "MultipleAbilities"},
+                            ["Parameter"] = {["Ability Name"] = text.Text}
+                        })
+                    end
+                end)
             end
+
+            for _, abilityFrame in ipairs(Frame:GetChildren()) do
+                HookAbilityContainer(abilityFrame)
+            end
+
+            Frame.ChildAdded:Connect(function(abilityFrame)
+                task.defer(function()
+                    HookAbilityContainer(abilityFrame)
+                end)
+            end)
         end
         if c.Name == "KilluaWishes" then
             local Options = c:WaitForChild("TextBackground"):WaitForChild("OptionsContainer")
@@ -2029,106 +2070,206 @@ function BuffEngine.Timing(config, index)
 end
 
 function BuffEngine.Send(unit, group, name, config, valid)
-    if not valid() or not BuffEngine.Ready(unit, group, name, config) then return false end
+    if not valid() or not BuffEngine.Ready(unit, group, name, config) then
+        return false
+    end
+
     local input = game.ReplicatedStorage.Remotes.Input
-    -- Preserve the main source's default activation argument.
-    -- Special Move Name is only a filter; it is never sent as this argument.
     local argument = ""
+
     if config["Ability Type"] ~= "Multiple" then
         input:FireServer("UseSpecialMove", unit, argument)
         return true
     end
-    if BuffEngine.MultipleBusy then return false end
+
+    if BuffEngine.MultipleBusy then
+        return false
+    end
+
     local existing = GUI:FindFirstChild("MultipleAbilities")
-    -- Do not select an option from another unit's already-open menu.
-    if existing and existing.Enabled then return false end
+
+    if existing and existing.Enabled then
+        return false
+    end
+
     BuffEngine.MultipleBusy = true
+
     local success, sent = pcall(function()
         input:FireServer("UseSpecialMove", unit, argument)
+
+        local targetName = tostring(config["Ability Name"] or "")
+        targetName = targetName:match("^%s*(.-)%s*$")
+
         local deadline = os.clock() + 4
+
         repeat
-            if not valid() or not BuffEngine.Matches(unit,name,config) then return false end
+            if not valid() or not BuffEngine.Matches(unit, name, config) then
+                return false
+            end
+
             local menu = GUI:FindFirstChild("MultipleAbilities")
             local frame = menu and menu:FindFirstChild("Frame")
+
             if menu and menu.Enabled and frame and frame.Visible then
-                for _, button in ipairs(frame:GetChildren()) do
-                    local label = button:FindFirstChild("TextLabel")
-                    if button:IsA("GuiButton") and label and label.Text == config["Ability Name"] then
-                        if valid() and BuffEngine.Matches(unit,name,config) then
-                            firesignal(button.Activated)
-                            return true
+                for _, object in ipairs(frame:GetDescendants()) do
+                    if object:IsA("GuiButton") then
+                        local label = object:FindFirstChild("TextLabel")
+
+                        if label then
+                            local visibleName = tostring(label.Text or "")
+                            visibleName = visibleName:match("^%s*(.-)%s*$")
+
+                            print("[Auto Buff] Found menu option:", visibleName)
+
+                            if visibleName == targetName then
+                                if valid() and BuffEngine.Matches(unit, name, config) then
+                                    print("[Auto Buff] Activating:", visibleName)
+                                    firesignal(object.Activated)
+                                    return true
+                                end
+                            end
                         end
                     end
                 end
             end
+
             task.wait(0.1)
         until os.clock() >= deadline
+
+        warn("[Auto Buff] Menu option not found:", targetName)
         return false
     end)
+
     BuffEngine.MultipleBusy = false
-    if not success then warn("[Auto Buff] Multiple ability: " .. tostring(sent)) end
+
+    if not success then
+        warn("[Auto Buff] Multiple ability error:", tostring(sent))
+    end
+
     return success and sent
 end
 
 function AutoBuff()
     BuffEngine.Generation = BuffEngine.Generation + 1
+
     local generation = BuffEngine.Generation
     local states = {}
-    local clock, last = 0, os.clock()
-    local function active() return Settings.auto_buff and generation == BuffEngine.Generation end
+    local clock = 0
+    local last = os.clock()
+
+    local function active()
+        return Settings.auto_buff
+            and generation == BuffEngine.Generation
+    end
+
     while active() do
         local now = os.clock()
         local speed = game.ReplicatedStorage:FindFirstChild("SpeedUP")
-        clock = clock + (now-last) * math.max(0,tonumber(speed and speed.Value) or 1)
+
+        clock = clock + (now - last) * math.max(
+            0,
+            tonumber(speed and speed.Value) or 1
+        )
+
         last = now
+
         local live = {}
+
         for name, config in pairs(Settings.auto_buff_units) do
             if type(config) == "table" then
-                local units = BuffEngine.Units(name,config)
+                local units = BuffEngine.Units(name, config)
                 local size = BuffEngine.Size(config)
                 local fingerprint = game:GetService("HttpService"):JSONEncode(config)
-                for index=1,math.floor(#units/size) do
-                    local group, ids = {}, {}
-                    for offset=1,size do
-                        local unit = units[(index-1)*size+offset]
+
+                for index = 1, math.floor(#units / size) do
+                    local group = {}
+                    local ids = {}
+
+                    for offset = 1, size do
+                        local unit = units[(index - 1) * size + offset]
+
                         group[offset] = unit
                         ids[offset] = tostring(BuffEngine.IDs[unit])
                     end
+
                     local key = name .. ":" .. index
-                    local signature = fingerprint .. ":" .. table.concat(ids,",")
+                    local signature = fingerprint .. ":" .. table.concat(ids, ",")
+
                     live[key] = true
+
                     local state = states[key]
+
                     if not state or state.Signature ~= signature then
-                        state = {Signature=signature, Cursor=1, Next=clock, Busy=false}
+                        state = {
+                            Signature = signature,
+                            Next = clock,
+                            Busy = false
+                        }
+
                         states[key] = state
                     end
+
                     if not state.Busy and clock >= state.Next then
-                        local unit = group[state.Cursor]
                         local function valid()
-                            return active() and states[key] == state
+                            return active()
+                                and states[key] == state
                                 and Settings.auto_buff_units[name] == config
                                 and game:GetService("HttpService"):JSONEncode(config) == fingerprint
                         end
-                        if BuffEngine.Ready(unit,group,name,config) then
-                            state.Busy = true
-                            task.spawn(function()
-                                local ok, sent = pcall(BuffEngine.Send,unit,group,name,config,valid)
-                                if valid() then
-                                    if ok and sent then
-                                        local time, delay = BuffEngine.Timing(config,index)
-                                        state.Cursor = state.Cursor % #group + 1
-                                        state.Next = clock + time + (state.Cursor == 1 and delay or 0)
-                                    else state.Next = clock + 0.5 end
+
+                        local abilityTime, postLoopDelay =
+                            BuffEngine.Timing(config, index)
+
+                        state.Busy = true
+
+                        task.spawn(function()
+                            local successCount = 0
+
+                            for _, unit in ipairs(group) do
+                                if not valid() then
+                                    break
                                 end
-                                state.Busy = false
-                                if not ok then warn("[Auto Buff] " .. tostring(sent)) end
-                            end)
-                        end
+
+                                if BuffEngine.Ready(unit, group, name, config) then
+                                    local ok, sent = pcall(
+                                        BuffEngine.Send,
+                                        unit,
+                                        group,
+                                        name,
+                                        config,
+                                        valid
+                                    )
+
+                                    if ok and sent then
+                                        successCount += 1
+
+                                        Delay(abilityTime, valid())
+                                    elseif not ok then
+                                        warn("[Auto Buff] " .. tostring(sent))
+                                    end
+                                end
+                            end
+
+                            if valid() and successCount > 0 then
+                                Delay(postLoopDelay, active())
+                                state.Next = clock
+                            elseif valid() then
+                                state.Next = clock + 0.5
+                            end
+
+                            state.Busy = false
+                        end)
                     end
                 end
             end
         end
-        for key in pairs(states) do if not live[key] then states[key] = nil end end
+
+        for key in pairs(states) do
+            if not live[key] then
+                states[key] = nil
+            end
+        end
+
         task.wait(0.1)
     end
 end
@@ -3135,10 +3276,6 @@ function InitializeUI()
                 Text="Normal / Primary Ability", Options={AnyMove}, Default=AnyMove,
                 Multi=false, Flag="autobuff_special_move", Callback=function() end,
             })
-            local AutoBuffExactControl = AdvancedSettingsTabSection:Input({
-                Text="Exact Ability Name (optional override)", Default="",
-                Placeholder="Exact SpecialMove name", Flag="autobuff_exact_move", Callback=function() end,
-            })
             AdvancedSettingsTabSection:Button({
                 Text="Refresh Detected Abilities",
                 Callback=function()
@@ -3158,12 +3295,74 @@ function InitializeUI()
             })
             AdvancedSettingsTabSection:Paragraph({Title="Ability matching and boxes",
                 Content="An exact primary ability name only runs while SpecialMove matches it, including after upgrades. Multiple selects the named menu option. Box uses independent groups of four in detection order; each box has its own timer. Incomplete groups wait. These groups are not based on map geometry."})
-            local AutoBuffMultipleAbilitiesNameInput
-            local AutoBuffAbilityNameControl = AdvancedSettingsTabSection:Input({
+            local NoDetectedAbilities = "No abilities detected"
+
+            local function DetectMultipleAbilities()
+                local options = {}
+                local seen = {}
+
+                local multipleAbilities = GUI:FindFirstChild("MultipleAbilities")
+                local frame = multipleAbilities and multipleAbilities:FindFirstChild("Frame")
+
+                if frame then
+                    for _, abilityContainer in ipairs(frame:GetChildren()) do
+                        local button = abilityContainer:FindFirstChild("ImageButton")
+                        local label = button and button:FindFirstChild("TextLabel")
+                        local abilityName = label and label.Text
+
+                        if type(abilityName) == "string"
+                            and abilityName ~= ""
+                            and not seen[abilityName] then
+                            seen[abilityName] = true
+                            table.insert(options, abilityName)
+                        end
+                    end
+                end
+
+                if #options == 0 then
+                    table.insert(options, NoDetectedAbilities)
+                end
+
+                return options
+            end
+
+            AdvancedSettingsTabSection:Paragraph({
+                Title = "Multiple Ability Detection",
+                Content = 'Go to training, max upgrade the unit, then click "Multiple Ability" so the abilities appear. Finally, click "Refresh Detected Abilities".'
+            })
+
+            local AutoBuffAbilityNameControl = AdvancedSettingsTabSection:Dropdown({
                 Text = "Multiple Abilities: Menu Option Name",
-                Placeholder = "Buff Ability",
+                Options = DetectMultipleAbilities(),
+                Default = NoDetectedAbilities,
+                Multi = false,
+                Search = true,
                 Flag = "autobuff_ability_name",
-                Callback = function(text) AutoBuffMultipleAbilitiesNameInput = text end
+                Callback = function() end
+            })
+
+            AdvancedSettingsTabSection:Button({
+                Text = "Refresh Detected Multiple Abilities",
+                Callback = function()
+                    local options = DetectMultipleAbilities()
+                    local current = AutoBuffAbilityNameControl:Get()
+
+                    if type(current) == "table" then
+                        current = current[1]
+                    end
+
+                    local selected = table.find(options, current) and current or options[1]
+
+                    AutoBuffAbilityNameControl:SetOptions(options)
+                    AutoBuffAbilityNameControl:Set(selected, true)
+
+                    Library:Notify({
+                        Title = "Auto Buff",
+                        Text = "Detected " .. tostring(#options == 1 and options[1] == NoDetectedAbilities and 0 or #options) .. " abilities.",
+                        Duration = 5,
+                        Icon = "info"
+                    })
+                end
             })
 
             local AutoBuffAbilityTime = 15
@@ -3236,8 +3435,16 @@ function InitializeUI()
                     if check == "Attack Buff" then table.insert(checks, "attack")
                     elseif check == "Range Buff" then table.insert(checks, "range") end
                 end
-                local abilityName = AutoBuffAbilityNameControl:Get():match("^%s*(.-)%s*$")
-                if abilityType == "Multiple" and abilityName == "" then
+                local abilityName = AutoBuffAbilityNameControl:Get()
+
+                if type(abilityName) == "table" then
+                    abilityName = abilityName[1]
+                end
+
+                abilityName = tostring(abilityName or ""):match("^%s*(.-)%s*$")
+                
+                if abilityType == "Multiple"
+                    and (abilityName == "" or abilityName == NoDetectedAbilities) then
                     BuffNotice("Enter an ability name when Multiple Abilities is selected."); return nil
                 end
                 local move = AutoBuffExactControl:Get():match("^%s*(.-)%s*$")
