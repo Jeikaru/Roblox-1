@@ -481,7 +481,6 @@ local function DetectStoryLevel()
     Settings.auto_join_story_level = level
     Save()
     if StoryLevelControl then StoryLevelControl:Set(level, true) end
-    print("[KarmaPanda] Detected and saved Story Level:", level)
     return true
 end
 
@@ -817,7 +816,6 @@ local function SendWebhook(fields)
             })
         })
     end)
-    if not status then print("Webhook error:", error_message) end
 end
 
 -- Queue implementation
@@ -843,12 +841,9 @@ local Upgrade_Counter = 0
 local function ActionQueueHelper()
     while task.wait() do
         if Queue.length(Action_Queue) > 0 then
-            print("Actions in queue:", Queue.length(Action_Queue))
             local current = Queue.popleft(Action_Queue)
             local remote_method = current["Method"]
             local remote_args = current["Args"]
-            print("Current Action", remote_method)
-            for k, v in pairs(remote_args) do print(k, v) end
             if tostring(remote_method) == "Input" then
                 game:GetService("ReplicatedStorage").Remotes.Input:FireServer(unpack(remote_args))
             end
@@ -922,7 +917,6 @@ local function SummonUnit(rotation, cframe, unit_name)
             connection:Disconnect()
         end
     end)
-    if not status then print("Error on Summon Unit: " .. err) end
 end
 
 local function UpgradeUnit(unit, upgrade_level)
@@ -965,7 +959,6 @@ local function UpgradeUnit(unit, upgrade_level)
             connection:Disconnect()
         end)
     end)
-    if not status then print("Error on Upgrade Unit: " .. err) end
 end
 
 local function UseAbilityUnit(unit, ability_string)
@@ -1001,7 +994,6 @@ local function UseAbilityUnit(unit, ability_string)
                 connection:Disconnect()
             end
         end)
-        if not status then print("Error on Use Unit Ability: " .. err) end
     end)
 end
 
@@ -1043,7 +1035,6 @@ local function UseKilluaWishesGUI(ability_name)
         for k, v in pairs(Options:GetChildren()) do
             if v.Name == "Option" then
                 if v.Text == ability_name then
-                    print("Attempting to activate!")
                     pcall(function() firesignal(v.MouseButton1Click) end)
                     gui:Destroy()
                     break
@@ -1202,7 +1193,6 @@ local function HookAbility(unit, index)
                     end
                 end
             end)
-            if not status then print("Error on use ability hook: " .. err) end
         end)
     end
     return nil
@@ -1676,7 +1666,6 @@ function StartMacroRecord()
     MacroLoadout.Capture(Macros[Settings.macro_profile])
     local Units = game:GetService("Workspace"):WaitForChild("Unit")
     for _, unit in pairs(get_units()) do AddHooks(unit, GetUnitIndex(unit)) end
-    print("Hooked Units In Workspace...")
     task.spawn(function()
         table.insert(record_connections, Units.ChildAdded:Connect(function(unit)
             local owner = unit:WaitForChild("Owner")
@@ -1692,7 +1681,6 @@ function StartMacroRecord()
                 AddHooks(unit, index)
             end
         end))
-        print("Hooked Unit Summoning...")
     end)
     task.spawn(function()
         table.insert(record_connections, Units.ChildRemoved:Connect(function(unit)
@@ -1709,12 +1697,11 @@ function StartMacroRecord()
                 end
             end
         end))
-        print("Hooked Units Selling...")
     end)
-    task.spawn(function() table.insert(record_connections, HookNextWave()); print("Hooked Next Wave...") end)
-    task.spawn(function() table.insert(record_connections, HookMultipleAbilitiesGUI()); print("Hooked Multiple Abilities GUI...") end)
-    task.spawn(function() table.insert(record_connections, HookAutoSkipWave()); print("Hooked Auto Skip Wave...") end)
-    task.spawn(function() table.insert(record_connections, HookSpeedChanges()); print("Hooked Speed Changes...") end)
+    task.spawn(function() table.insert(record_connections, HookNextWave()))
+    task.spawn(function() table.insert(record_connections, HookMultipleAbilitiesGUI()); end)
+    task.spawn(function() table.insert(record_connections, HookAutoSkipWave()))
+    task.spawn(function() table.insert(record_connections, HookSpeedChanges()))
     Library:Notify({Title = "Macro Recording", Text = "Started Macro Recording...", Duration = 6.5, Icon = "info"})
 end
 
@@ -1825,7 +1812,6 @@ function AutoBattle()
         local success = game.ReplicatedStorage:WaitForChild("Autoplay", 5)
         if not success then warn("AutoBattle purchase failed — not enough gems?"); return end
     end
-    print("AutoBattle is active!")
 end
 
 local function ManualUpgrade()
@@ -2187,11 +2173,9 @@ function BuffEngine.Send(unit, group, name, config, valid)
                             local visibleName = tostring(label.Text or "")
                             visibleName = visibleName:match("^%s*(.-)%s*$")
 
-                            print("[Auto Buff] Found menu option:", visibleName)
 
                             if visibleName == targetName then
                                 if valid() and BuffEngine.Matches(unit, name, config) then
-                                    print("[Auto Buff] Activating:", visibleName)
                                     firesignal(object.Activated)
                                     return true
                                 end
@@ -2574,7 +2558,6 @@ function AutoSkipGUI()
                     workspace.CurrentCamera.ViewportSize.Y / 2))
             end
         end)
-        if not status then print("Error on Auto Skip GUI: " .. err) end
         task.wait()
     end
 end
