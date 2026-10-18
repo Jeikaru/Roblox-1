@@ -231,6 +231,7 @@ local DefaultSettings = {
     auto_2x = false,
     auto_3x = false,
     seamless_macro = false,
+    auto_execute = false,
     macro_profile = "Default Profile",
     macro_record = false,
     macro_playback = false,
@@ -730,6 +731,19 @@ local function CheckStun(unit)
         return false
     end
     return true
+end
+
+local AutoExecuteURL = "https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/astd.lua"
+
+local function QueueAutoExecute()
+    if typeof(queue_on_teleport) ~= "function" then
+        warn("[KarmaPanda] queue_on_teleport is not supported by this executor.")
+        return
+    end
+
+    queue_on_teleport([[
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/astd.lua"))()
+    ]])
 end
 
 local function HideSummonGUI()
@@ -2588,6 +2602,7 @@ if get_world() ~= -1 and get_world() ~= -2 then
         if Settings.macro_playback then task.spawn(StartMacroPlayback) end
         if Settings.auto_upgrade then task.spawn(AutoUpgrade) end
         if Settings.auto_upgrade_sell then task.spawn(AutoSell) end
+        if Settings.seamless_macro then task.spawn(SeamlessPlayback) end
         task.spawn(OnGameEnd)
     else
         if Settings.auto_evolve_exp then task.spawn(AutoEvolveEXP) end
@@ -2732,6 +2747,28 @@ function InitializeUI()
         local Main = Window:Tab("Main")
         local MainSection
         MainSection = Main:Section("Gameplay Scripts", 1)
+        local AutoExecuteToggle = AddToggle(MainSection, {
+            Text = "Auto Execute",
+            Default = Settings.auto_execute,
+            Flag = "auto_execute",
+            Callback = function(value)
+                Settings.auto_execute = value
+                Save()
+
+                if value then
+                    QueueAutoExecute()
+                end
+            end
+        })
+
+        MainSection:Paragraph({
+            Title = "Auto Execute",
+            Content = "Automatically executes ASTD after teleporting or rejoining."
+        })
+
+        if Settings.auto_execute then
+            QueueAutoExecute()
+        end
         local AutoBuffToggle = AddToggle(MainSection, {
             Text = "Auto Unit Buffing",
             Default = Settings.auto_buff,
