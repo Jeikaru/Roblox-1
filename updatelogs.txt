@@ -1,5 +1,6 @@
 Key:UpdateV4.21
 
+IF YOU BROUGHT THIS FROM SOMEWHERE ELSE THAT MEANS YOU GOT SCAMMED! THIS SCRIPT IS CURRENTLY FREE AND OPENSOURCE
 Updated to V4.2
 - Fixed nested multiple-ability button detection.
 - Updated multiple-ability activation.
