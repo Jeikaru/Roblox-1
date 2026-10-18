@@ -1714,10 +1714,12 @@ end
 local playbackGeneration = 0
 
 function StartMacroPlayback()
-    playbackGeneration = playbackGeneration + 1
-    local runId = playbackGeneration
     if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
     if is_lobby() then return end
+    playbackGeneration = playbackGeneration + 1
+    local runId = playbackGeneration
+    StartTime = getrenv()["time"]()
+    TimeOffset = 0
     CurrentStep = nil
     table.sort(Macros[Settings.macro_profile]["Macro"], function(a, b) return a["Time"] < b["Time"] end)
     CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
@@ -1984,8 +1986,6 @@ function SeamlessPlayback()
 
         -- Invalidate any prior run, including one waiting for a late unit.
         playbackGeneration = playbackGeneration + 1
-        Settings.macro_playback = false
-        CurrentStep = nil
         task.wait(0.5)
 
         if not Settings.seamless_macro or seamlessGeneration ~= watcherId then break end
