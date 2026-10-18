@@ -1,9 +1,17 @@
-Key:UpdateV4.3
+Key:UpdateV4.31
 
 IF YOU BROUGHT THIS FROM SOMEWHERE ELSE THAT MEANS YOU GOT SCAMMED! THIS SCRIPT IS CURRENTLY FREE AND OPENSOURCE
-Updated to V4.3.1
+
+Updated to V4.3.2 (October 18 2026)
+- 5 Billion Commits Bugs Fixed (Please Kill me, I literally just finished my website project today :<
+- Fixed Multiple Ability Recording Despite being in the blacklisted ability in the macro section
+- Fixed Seamless
+
+V4.3.1 (October 18 2026)
 - Added Auto Execute
 - Added Seamless Playback
+
+V4.3 (October 18 2026)
 - Fixed nested multiple-ability button detection.
 - Updated multiple-ability activation.
 - Added dynamic ability-button detection.
