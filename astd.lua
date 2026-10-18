@@ -1698,10 +1698,10 @@ function StartMacroRecord()
             end
         end))
     end)
-    task.spawn(function() table.insert(record_connections, HookNextWave()))
+    task.spawn(function() table.insert(record_connections, HookNextWave()); end)
     task.spawn(function() table.insert(record_connections, HookMultipleAbilitiesGUI()); end)
-    task.spawn(function() table.insert(record_connections, HookAutoSkipWave()))
-    task.spawn(function() table.insert(record_connections, HookSpeedChanges()))
+    task.spawn(function() table.insert(record_connections, HookAutoSkipWave()); end)
+    task.spawn(function() table.insert(record_connections, HookSpeedChanges()); end)
     Library:Notify({Title = "Macro Recording", Text = "Started Macro Recording...", Duration = 6.5, Icon = "info"})
 end
 
