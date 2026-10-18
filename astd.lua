@@ -1724,6 +1724,7 @@ end
 function StartMacroPlayback()
     if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
     if is_lobby() then return end
+    CurrentStep = nil
     table.sort(Macros[Settings.macro_profile]["Macro"], function(a, b) return a["Time"] < b["Time"] end)
     CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
     while CurrentStep do
@@ -1788,7 +1789,14 @@ function StartMacroPlayback()
     end
 end
 
-function StopMacroPlayback() if is_lobby() then return end end
+function StopMacroPlayback()
+    if is_lobby() then
+        return
+    end
+
+    Settings.macro_playback = false
+    CurrentStep = nil
+end
 
 function AutoVoteExtreme()
     repeat task.wait() until GUI.HUD.ModeVoteFrame.Visible
@@ -1972,9 +1980,17 @@ function SeamlessPlayback()
     until GUI.HUD.ModeVoteFrame.Visible
 
     Settings.macro_playback = false
-    task.wait(0.2)
+    CurrentStep = nil
 
+    task.wait(0.5)
+
+    CurrentStep = nil
     Settings.macro_playback = true
+
+    task.spawn(function()
+        StartMacroPlayback()
+    end)
+
     task.wait(0.2)
 
     local Event = game:GetService("ReplicatedStorage").Remotes.Input
