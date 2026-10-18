@@ -1985,11 +1985,9 @@ function SeamlessPlayback()
     task.wait(0.5)
 
     CurrentStep = nil
+    wait(2)
     Settings.macro_playback = true
-
-    task.spawn(function()
-        StartMacroPlayback()
-    end)
+    StartMacroPlayback()
 
     task.wait(0.2)
 
