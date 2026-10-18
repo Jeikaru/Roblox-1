@@ -1,7 +1,8 @@
 Key:UpdateV4.3
 
 IF YOU BROUGHT THIS FROM SOMEWHERE ELSE THAT MEANS YOU GOT SCAMMED! THIS SCRIPT IS CURRENTLY FREE AND OPENSOURCE
-Updated to V4.3
+Updated to V4.3.1
+- Added Auto Execute
 - Added Seamless Playback
 - Fixed nested multiple-ability button detection.
 - Updated multiple-ability activation.
