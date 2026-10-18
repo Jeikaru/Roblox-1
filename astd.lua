@@ -1263,6 +1263,17 @@ local function HookAutoSkipWave()
     end
 end
 
+local function IsMultipleAbilityBlacklisted(abilityName)
+    for _, unitName in ipairs(Settings.macro_ability_blacklist or {}) do
+        local config = Settings.auto_buff_units and Settings.auto_buff_units[unitName]
+        if config
+            and config["Ability Type"] == "Multiple"
+            and config["Ability Name"] == abilityName then
+            return true
+        end
+    end
+    return false
+end
 local function HookMultipleAbilitiesGUI()
     local function Hook(c)
         if c.Name == "MultipleAbilities" then
@@ -1282,14 +1293,15 @@ local function HookMultipleAbilitiesGUI()
 
                 HookedButtons[button] = true
 
-                button.Activated:Connect(function()
+button.Activated:Connect(function()
                     local text = button:FindFirstChild("TextLabel")
 
-                    if Settings.macro_record and Settings.macro_ability and text then
+                    if Settings.macro_record and Settings.macro_ability and text
+                        and not IsMultipleAbilityBlacklisted(text.Text) then
                         InsertToMacro({
                             ["Time"] = MacroRecordElapsedTime(),
                             ["Remote"] = {[1] = "MultipleAbilities"},
-                            ["Parameter"] = {["Ability Name"] = text.Text}
+                            ["Parameter"] = { ["Ability Name"] = text.Text }
                         })
                     end
                 end)
@@ -3387,6 +3399,11 @@ function InitializeUI()
             local AutoBuffMoveControl = AdvancedSettingsTabSection:Dropdown({
                 Text="Normal / Primary Ability", Options={AnyMove}, Default=AnyMove,
                 Multi=false, Flag="autobuff_special_move", Callback=function() end,
+            })
+            local AutoBuffExactControl = AdvancedSettingsTabSection:Input({
+                Text="Exact Special Move Name (optional)", Default="",
+                Placeholder="Leave blank to use the dropdown",
+                Flag="autobuff_exact_special_move", Callback=function() end,
             })
             AdvancedSettingsTabSection:Button({
                 Text="Refresh Detected Abilities",
