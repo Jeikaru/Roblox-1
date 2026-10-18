@@ -103,7 +103,7 @@ local function CompareColor3(base, toCompare)
     end
 end
 
-local version = "4.2"
+local version = "4.3"
 
 local UpdateLogUrl = "https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/updatelogs.txt"
 local Settings
@@ -230,6 +230,7 @@ local DefaultSettings = {
     auto_vote_extreme = false,
     auto_2x = false,
     auto_3x = false,
+    seamless_macro = false,
     macro_profile = "Default Profile",
     macro_record = false,
     macro_playback = false,
@@ -419,7 +420,7 @@ local function ShowUpdateLog()
 
     paragraph.Title.Parent.Visible = false
     paragraph.Body.RichText = false
-    paragraph.Body.TextSize = 40
+    paragraph.Body.TextSize = 18
     paragraph.Body.TextWrapped = true
 
     Window:SetTab(updateTab)
@@ -927,7 +928,6 @@ local function UpgradeUnit(unit, upgrade_level)
         end
         repeat
             task.wait()
-            print(string.format("Macro money tracking, current money %s. Upgrade cost %s.", get_money(), total_upgrade_cost))
             if UnitIsUpgraded() then return end
         until get_money() >= total_upgrade_cost
         local upgraded = false
@@ -1952,6 +1952,25 @@ function AutoNextStory()
     end
 end
 
+function SeamlessPlayback()
+    repeat
+        task.wait()
+    until GUI.HUD.ModeVoteFrame.Visible
+
+    Settings.macro_playback = false
+    task.wait(0.2)
+
+    Settings.macro_playback = true
+    task.wait(0.2)
+
+    local Event = game:GetService("ReplicatedStorage").Remotes.Input
+    Event:FireServer("VoteSkipTimer")
+
+    repeat
+        task.wait(1)
+    until not GUI.HUD.ModeVoteFrame.Visible
+end
+
 function AutoUpgrade()
     while true do
         while get_money() >= Settings.auto_upgrade_money and get_wave() >= Settings.auto_upgrade_wave
@@ -2796,6 +2815,24 @@ function InitializeUI()
                 Settings.auto_next_story = value; Save()
                 if not is_lobby() and value then AutoNextStory() end
             end
+        })
+        local SeamlessMacroToggle = AddToggle(MainSection, {
+            Text = "Seamless Macro",
+            Default = Settings.seamless_macro,
+            Flag = "seamless_macro",
+            Callback = function(value)
+                Settings.seamless_macro = value
+                Save()
+
+                if not is_lobby() and value then
+                    task.spawn(SeamlessPlayback)
+                end
+            end
+        })
+
+        MainSection:Paragraph({
+            Title = "Seamless Macro",
+            Content = "Automatically starts the match. Only enable this if Auto Replay is turned on in ASTD settings."
         })
         local function AutomationSettings()
             MainSection = Main:Section("Automation", 2)
