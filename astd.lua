@@ -1964,14 +1964,22 @@ function AutoNextStory()
 end
 
 function SeamlessPlayback()
-    repeat task.wait() until GUI.HUD.ModeVoteFrame.Visible
+    repeat
+        task.wait()
+    until GUI.HUD.ModeVoteFrame.Visible
 
+    Settings.macro_playback = false
     CurrentStep = nil
+
     task.wait(0.5)
+
+    Settings.macro_playback = true
 
     task.spawn(function()
         StartMacroPlayback()
     end)
+
+    task.wait(0.2)
 
     local Event = game:GetService("ReplicatedStorage").Remotes.Input
 
