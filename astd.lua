@@ -1711,16 +1711,20 @@ function StopMacroRecord()
     Library:Notify({Title = "Macro Recording", Text = "Stopped Macro Recording...", Duration = 6.5, Icon = "info"})
 end
 
+local playbackGeneration = 0
+
 function StartMacroPlayback()
+    playbackGeneration = playbackGeneration + 1
+    local runId = playbackGeneration
     if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
     if is_lobby() then return end
     CurrentStep = nil
     table.sort(Macros[Settings.macro_profile]["Macro"], function(a, b) return a["Time"] < b["Time"] end)
     CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
-    while CurrentStep do
+    while CurrentStep and Settings.macro_playback and playbackGeneration == runId do
         local Current = Macros[Settings.macro_profile]["Macro"][CurrentStep]
-        repeat task.wait() until ElapsedTime() + Settings.macro_playback_time_offset >= Current["Time"] or not Settings.macro_playback
-        if not Settings.macro_playback then break end
+        repeat task.wait() until ElapsedTime() + Settings.macro_playback_time_offset >= Current["Time"] or not Settings.macro_playback or playbackGeneration ~= runId
+        if not Settings.macro_playback or playbackGeneration ~= runId then break end
         local Remote = Current["Remote"]
         if Current["Target"] == nil then
             if Remote[1] == "VoteWaveConfirm" then
@@ -1745,10 +1749,12 @@ function StartMacroPlayback()
                     local attempts = 0
                     repeat
                         task.wait(Settings.macro_playback_search_delay)
+                        if not Settings.macro_playback or playbackGeneration ~= runId then break end
                         unit, position, rotation = GetUnitByTargetInfo(Current["Target"])
                         print(string.format("Macro is attempting to find the unit for %s.", Remote[1]))
                         attempts = attempts + 1
-                    until unit ~= nil or attempts >= Settings.macro_playback_search_attempts or not Settings.macro_playback
+                    until unit ~= nil or attempts >= Settings.macro_playback_search_attempts or not Settings.macro_playback or playbackGeneration ~= runId
+                    if not Settings.macro_playback or playbackGeneration ~= runId then break end
                     if attempts >= Settings.macro_playback_search_attempts then
                         print(string.format("Macro skipped step %s for action %s, target %s, time %s.", CurrentStep, Remote[1], Current["Target"]["Name"], Current["Time"]))
                     end
@@ -1774,20 +1780,17 @@ function StartMacroPlayback()
                 print(string.format("Macro error! Cannot find unit for remote %s at step %s", Remote[1], CurrentStep))
             end
         end
+        if playbackGeneration ~= runId or not Settings.macro_playback then break end
         CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
         task.wait()
     end
 end
 
 function StopMacroPlayback()
-    if is_lobby() then
-        return
-    end
-
+    playbackGeneration = playbackGeneration + 1
     Settings.macro_playback = false
     CurrentStep = nil
 end
-
 function AutoVoteExtreme()
     repeat task.wait() until GUI.HUD.ModeVoteFrame.Visible
     repeat
@@ -1963,32 +1966,41 @@ function AutoNextStory()
     end
 end
 
+local seamlessGeneration = 0
+
 function SeamlessPlayback()
-    repeat
-        task.wait()
-    until GUI.HUD.ModeVoteFrame.Visible
-
-    Settings.macro_playback = false
-    CurrentStep = nil
-
-    task.wait(0.5)
-
-    Settings.macro_playback = true
-
-    task.spawn(function()
-        StartMacroPlayback()
-    end)
-
-    task.wait(0.2)
-
+    seamlessGeneration = seamlessGeneration + 1
+    local watcherId = seamlessGeneration
     local Event = game:GetService("ReplicatedStorage").Remotes.Input
 
-    while GUI.HUD.ModeVoteFrame.Visible do
-        Event:FireServer("VoteSkipTimer")
-        task.wait(1)
+    while Settings.seamless_macro and seamlessGeneration == watcherId do
+        repeat
+            task.wait()
+        until GUI.HUD.ModeVoteFrame.Visible
+            or not Settings.seamless_macro
+            or seamlessGeneration ~= watcherId
+
+        if not Settings.seamless_macro or seamlessGeneration ~= watcherId then break end
+
+        -- Invalidate any prior run, including one waiting for a late unit.
+        playbackGeneration = playbackGeneration + 1
+        Settings.macro_playback = false
+        CurrentStep = nil
+        task.wait(0.5)
+
+        if not Settings.seamless_macro or seamlessGeneration ~= watcherId then break end
+        Settings.macro_playback = true
+        task.spawn(StartMacroPlayback)
+
+        task.wait(0.2)
+        while GUI.HUD.ModeVoteFrame.Visible
+            and Settings.seamless_macro
+            and seamlessGeneration == watcherId do
+            Event:FireServer("VoteSkipTimer")
+            task.wait(1)
+        end
     end
 end
-
 function AutoUpgrade()
     while true do
         while get_money() >= Settings.auto_upgrade_money and get_wave() >= Settings.auto_upgrade_wave
