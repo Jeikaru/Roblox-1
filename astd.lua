@@ -1670,6 +1670,9 @@ function StartMacroRecord()
     if Macros[Settings.macro_profile]["Map"] == nil then Macros[Settings.macro_profile]["Map"] = {} end
     if Macros[Settings.macro_profile]["Units"] == nil then Macros[Settings.macro_profile]["Units"] = {} end
     if is_lobby() then return end
+    StartTime = getrenv()["time"]()
+    TimeOffset = 0
+    CurrentStep = nil
     MacroLoadout.Capture(Macros[Settings.macro_profile])
     local Units = game:GetService("Workspace"):WaitForChild("Unit")
     for _, unit in pairs(get_units()) do AddHooks(unit, GetUnitIndex(unit)) end
@@ -1975,28 +1978,21 @@ function AutoNextStory()
 end
 
 function SeamlessPlayback()
-    repeat
-        task.wait()
-    until GUI.HUD.ModeVoteFrame.Visible
+    repeat task.wait() until GUI.HUD.ModeVoteFrame.Visible
 
-    Settings.macro_playback = false
     CurrentStep = nil
-
     task.wait(0.5)
 
-    CurrentStep = nil
-    wait(2)
-    Settings.macro_playback = true
-    StartMacroPlayback()
-
-    task.wait(0.2)
+    task.spawn(function()
+        StartMacroPlayback()
+    end)
 
     local Event = game:GetService("ReplicatedStorage").Remotes.Input
-    Event:FireServer("VoteSkipTimer")
 
-    repeat
+    while GUI.HUD.ModeVoteFrame.Visible do
+        Event:FireServer("VoteSkipTimer")
         task.wait(1)
-    until not GUI.HUD.ModeVoteFrame.Visible
+    end
 end
 
 function AutoUpgrade()
