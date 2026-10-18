@@ -1,16 +1,14 @@
-Key:UpdateV4.2
+Key:UpdateV4.21
 
 Updated to V4.2
 - Fixed nested multiple-ability button detection.
-- Updated multiple-ability activation through ImageButton.Activated.
+- Updated multiple-ability activation.
 - Added dynamic ability-button detection.
 - Added multiple-ability dropdown selection.
 - Fixed “Refresh Detected Abilities”.
 - Added validation for missing or invalid ability selections.
 - Fixed Box mode to process every unit in the group.
 - Added nested descendant searching for abilities like Time-Freezing Sands II.
-- Applied Ability Time between each unit.
-- Applied Post Loop Delay after each group.
 
 Ai placement will be in Nov 6
 
