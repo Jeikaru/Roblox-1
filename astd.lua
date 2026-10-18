@@ -103,7 +103,7 @@ local function CompareColor3(base, toCompare)
     end
 end
 
-local version = "4.1"
+local version = "4.2"
 
 local UpdateLogUrl = "https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/updatelogs.txt"
 local Settings
