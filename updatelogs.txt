@@ -14,3 +14,4 @@ Updated to V4.2
 Ai placement will be in Nov 6
 
 report bugs at https://github.com/Jeikaru/Roblox-1/pulls
+Maintainer Does not have a discord server. but theres an old discord server from Karmapanda at https://discord.gg/BrnQQGKbvE, you can share or use some of the configs there.
