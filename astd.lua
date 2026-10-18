@@ -382,33 +382,58 @@ local function ShowUpdateLog()
     local fetched, source = pcall(function()
         return game:HttpGet(UpdateLogUrl)
     end)
+
     if not fetched or type(source) ~= "string" then
         warn("[KarmaPanda] Could not fetch update notes; will retry next run.")
         return
     end
-    source = source:gsub("^\239\187\191", ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+
+    source = source
+        :gsub("^\239\187\191", "")
+        :gsub("\r\n", "\n")
+        :gsub("\r", "\n")
+
     local firstLine, notes = source:match("^([^\n]*)\n(.*)$")
     local updateKey = firstLine and firstLine:match("^%s*Key:%s*(.-)%s*$")
-    if not updateKey or updateKey == "" or not notes or not notes:find("%S") then
+
+    if not updateKey
+        or updateKey == ""
+        or not notes
+        or not notes:find("%S") then
+
         warn("[KarmaPanda] Update log requires Key:<update key> on the first line and notes below it.")
         return
     end
-    if Settings.UpdateKey == updateKey then return end
+
+    if Settings.UpdateKey == updateKey then
+        return
+    end
+
     notes = notes:gsub("^\n+", ""):gsub("\n+$", "")
 
     local updateTab = Window:Tab("Update Log")
     local section = updateTab:Full("Update Log")
-    local paragraph = section:Paragraph({Content = notes})
+    local paragraph = section:Paragraph({
+        Content = notes
+    })
+
     paragraph.Title.Parent.Visible = false
     paragraph.Body.RichText = false
+    paragraph.Body.TextSize = 40
+    paragraph.Body.TextWrapped = true
+
     Window:SetTab(updateTab)
 
-    -- Remember the key silently after showing the notes and saving successfully.
     local updatedProfile = DeepCopy(Settings)
     updatedProfile.UpdateKey = updateKey
+
     local saved, saveError = pcall(function()
-        writefile(SettingsFile, game:GetService("HttpService"):JSONEncode(updatedProfile))
+        writefile(
+            SettingsFile,
+            game:GetService("HttpService"):JSONEncode(updatedProfile)
+        )
     end)
+
     if saved then
         Settings.UpdateKey = updateKey
     else
