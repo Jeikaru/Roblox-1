@@ -8,6 +8,7 @@ The latest source provided with this README is [astd.lua](https://raw.githubuser
 
 Important Notice: [![Reviewed on ScriptBlox](https://scriptblox.com/badge/UPDATE-+-4X-All-Star-Tower-Defense-Karmapanda-Hub-12716)](https://scriptblox.com/script/UPDATE-+-4X-All-Star-Tower-Defense-Karmapanda-Hub-12716)
 
+Loadstring: ```loadstring(game:HttpGet("https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/astd.lua"))()```
 ## Script Features
 
 ### Main
