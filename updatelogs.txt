@@ -1,10 +1,16 @@
-Key:UpdateV4.1.1
+Key:UpdateV4.2
 
-Notice: Multi Ability Inside Abilities doesn't get fire anymore. idk why but hopefully astd fixes their stupid ass bugs. sincerly Jeikaru
-
-For Now Auto Ability using Multiple Abilities is Bugged and Macro recording
-
-WHY THE FUCK IS THIS EVEN A THING?! WHY AM I EVEN BACK AT MAINTAINING THIS SHIT?!|
+Updated to V4.2
+- Fixed nested multiple-ability button detection.
+- Updated multiple-ability activation through ImageButton.Activated.
+- Added dynamic ability-button detection.
+- Added multiple-ability dropdown selection.
+- Fixed “Refresh Detected Abilities”.
+- Added validation for missing or invalid ability selections.
+- Fixed Box mode to process every unit in the group.
+- Added nested descendant searching for abilities like Time-Freezing Sands II.
+- Applied Ability Time between each unit.
+- Applied Post Loop Delay after each group.
 
 Ai placement will be in Nov 6
 
