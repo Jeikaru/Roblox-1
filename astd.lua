@@ -103,7 +103,7 @@ local function CompareColor3(base, toCompare)
     end
 end
 
-local version = "4.3"
+local version = "4.4"
 
 local UpdateLogUrl = "https://raw.githubusercontent.com/Jeikaru/Roblox-1/refs/heads/main/updatelogs.txt"
 local Settings
@@ -396,14 +396,16 @@ local function ShowUpdateLog()
         :gsub("\r", "\n")
 
     local firstLine, notes = source:match("^([^\n]*)\n(.*)$")
-    local updateKey = firstLine and firstLine:match("^%s*Key:%s*(.-)%s*$")
+    if not firstLine then
+        warn("[KarmaPanda] Update log is missing its notes.")
+        return
+    end
 
-    if not updateKey
-        or updateKey == ""
-        or not notes
-        or not notes:find("%S") then
+    local updateKey = firstLine:match("^%s*Key:%s*(.-)%s*$")
+    notes = notes:gsub("^\n+", ""):gsub("\n+$", "")
 
-        warn("[KarmaPanda] Update log requires Key:<update key> on the first line and notes below it.")
+    if not updateKey or updateKey == "" or not notes:find("%S") then
+        warn("[KarmaPanda] Update log must start with Key:<update key> followed by notes.")
         return
     end
 
@@ -411,20 +413,25 @@ local function ShowUpdateLog()
         return
     end
 
-    notes = notes:gsub("^\n+", ""):gsub("\n+$", "")
+    local displayed, displayError = pcall(function()
+        local updateTab = Window:Tab("Update Log")
+        local section = updateTab:Full("Update Log")
+        local paragraph = section:Paragraph({
+            Content = notes
+        })
 
-    local updateTab = Window:Tab("Update Log")
-    local section = updateTab:Full("Update Log")
-    local paragraph = section:Paragraph({
-        Content = notes
-    })
+        paragraph.Title.Parent.Visible = false
+        paragraph.Body.RichText = false
+        paragraph.Body.TextSize = 14
+        paragraph.Body.TextWrapped = true
 
-    paragraph.Title.Parent.Visible = false
-    paragraph.Body.RichText = false
-    paragraph.Body.TextSize = 18
-    paragraph.Body.TextWrapped = true
+        Window:SetTab(updateTab)
+    end)
 
-    Window:SetTab(updateTab)
+    if not displayed then
+        warn("[KarmaPanda] Could not display update notes: " .. tostring(displayError))
+        return
+    end
 
     local updatedProfile = DeepCopy(Settings)
     updatedProfile.UpdateKey = updateKey
@@ -1666,55 +1673,109 @@ function MacroLoadout.BuildUI(section)
 end
 
 function StartMacroRecord()
-    if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
-    if Macros[Settings.macro_profile]["Macro"] == nil then Macros[Settings.macro_profile]["Macro"] = {} end
-    if Macros[Settings.macro_profile]["Settings"] == nil then Macros[Settings.macro_profile]["Settings"] = {} end
-    if Macros[Settings.macro_profile]["Map"] == nil then Macros[Settings.macro_profile]["Map"] = {} end
-    if Macros[Settings.macro_profile]["Units"] == nil then Macros[Settings.macro_profile]["Units"] = {} end
+    if MacroLoadout.Busy then
+        MacroLoadout.Notify("Wait for loadout setup to finish.")
+        return
+    end
+
+    if Macros[Settings.macro_profile]["Macro"] == nil then
+        Macros[Settings.macro_profile]["Macro"] = {}
+    end
+    if Macros[Settings.macro_profile]["Settings"] == nil then
+        Macros[Settings.macro_profile]["Settings"] = {}
+    end
+    if Macros[Settings.macro_profile]["Map"] == nil then
+        Macros[Settings.macro_profile]["Map"] = {}
+    end
+    if Macros[Settings.macro_profile]["Units"] == nil then
+        Macros[Settings.macro_profile]["Units"] = {}
+    end
+
     if is_lobby() then return end
+
     StartTime = getrenv()["time"]()
     TimeOffset = 0
     CurrentStep = nil
+
     MacroLoadout.Capture(Macros[Settings.macro_profile])
+
     local Units = game:GetService("Workspace"):WaitForChild("Unit")
-    for _, unit in pairs(get_units()) do AddHooks(unit, GetUnitIndex(unit)) end
+
+    for _, unit in pairs(get_units()) do
+        AddHooks(unit, GetUnitIndex(unit))
+    end
+
     task.spawn(function()
         table.insert(record_connections, Units.ChildAdded:Connect(function(unit)
             local owner = unit:WaitForChild("Owner")
+
             if tostring(owner.Value) == Player.Name then
                 local index = GetUnitIndex(unit)
+
                 if Settings.macro_record and Settings.macro_summon then
                     InsertToMacro({
                         ["Time"] = MacroRecordElapsedTime(),
-                        ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
-                        ["Remote"] = {[1] = "Summon", [2] = "Target"}
+                        ["Target"] = {
+                            ["Name"] = unit.Name,
+                            ["Index"] = index
+                        },
+                        ["Remote"] = {
+                            [1] = "Summon",
+                            [2] = "Target"
+                        }
                     })
                 end
+
                 AddHooks(unit, index)
             end
         end))
     end)
+
     task.spawn(function()
         table.insert(record_connections, Units.ChildRemoved:Connect(function(unit)
             if Settings.macro_record and Settings.macro_sell then
                 local owner = unit:WaitForChild("Owner")
+
                 if tostring(owner.Value) == Player.Name then
                     local index = GetUnitIndex(unit)
+
                     InsertToMacro({
                         ["Time"] = MacroRecordElapsedTime(),
-                        ["Target"] = {["Name"] = unit.Name, ["Index"] = index},
-                        ["Remote"] = {[1] = "Sell", [2] = "Target"}
+                        ["Target"] = {
+                            ["Name"] = unit.Name,
+                            ["Index"] = index
+                        },
+                        ["Remote"] = {
+                            [1] = "Sell",
+                            [2] = "Target"
+                        }
                     })
+
                     Save()
                 end
             end
         end))
     end)
-    task.spawn(function() table.insert(record_connections, HookNextWave()); end)
-    task.spawn(function() table.insert(record_connections, HookMultipleAbilitiesGUI()); end)
-    task.spawn(function() table.insert(record_connections, HookAutoSkipWave()); end)
-    task.spawn(function() table.insert(record_connections, HookSpeedChanges()); end)
-    Library:Notify({Title = "Macro Recording", Text = "Started Macro Recording...", Duration = 6.5, Icon = "info"})
+
+    task.spawn(function()
+        table.insert(record_connections, HookNextWave())
+    end)
+    task.spawn(function()
+        table.insert(record_connections, HookMultipleAbilitiesGUI())
+    end)
+    task.spawn(function()
+        table.insert(record_connections, HookAutoSkipWave())
+    end)
+    task.spawn(function()
+        table.insert(record_connections, HookSpeedChanges())
+    end)
+
+    Library:Notify({
+        Title = "Macro Recording",
+        Text = "Started Macro Recording...",
+        Duration = 6.5,
+        Icon = "info"
+    })
 end
 
 function StopMacroRecord()
@@ -1726,62 +1787,145 @@ end
 local playbackGeneration = 0
 
 function StartMacroPlayback()
-    if MacroLoadout.Busy then MacroLoadout.Notify("Wait for loadout setup to finish."); return end
+    if MacroLoadout.Busy then
+        MacroLoadout.Notify("Wait for loadout setup to finish.")
+        return
+    end
     if is_lobby() then return end
+
     playbackGeneration = playbackGeneration + 1
     local runId = playbackGeneration
+
     StartTime = getrenv()["time"]()
     TimeOffset = 0
     CurrentStep = nil
-    table.sort(Macros[Settings.macro_profile]["Macro"], function(a, b) return a["Time"] < b["Time"] end)
-    CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
+
+    local macro = Macros[Settings.macro_profile]["Macro"]
+
+    table.sort(macro, function(a, b)
+        return a["Time"] < b["Time"]
+    end)
+
+    CurrentStep = 1
+
     while CurrentStep and Settings.macro_playback and playbackGeneration == runId do
-        local Current = Macros[Settings.macro_profile]["Macro"][CurrentStep]
-        repeat task.wait() until ElapsedTime() + Settings.macro_playback_time_offset >= Current["Time"] or not Settings.macro_playback or playbackGeneration ~= runId
-        if not Settings.macro_playback or playbackGeneration ~= runId then break end
+        local Current = macro[CurrentStep]
+        if not Current then break end
+
+        repeat
+            task.wait()
+        until ElapsedTime() + Settings.macro_playback_time_offset >= Current["Time"]
+            or not Settings.macro_playback
+            or playbackGeneration ~= runId
+
+        if not Settings.macro_playback or playbackGeneration ~= runId then
+            break
+        end
+
         local Remote = Current["Remote"]
+
         if Current["Target"] == nil then
             if Remote[1] == "VoteWaveConfirm" then
                 SkipWave(Current["Parameter"]["Wave"])
             elseif Remote[1] == "AutoSkipWaves_CHANGE" then
-                AutoSkipWaveToggle(Current["Parameter"]["Wave"], Current["Parameter"]["Status"])
+                AutoSkipWaveToggle(
+                    Current["Parameter"]["Wave"],
+                    Current["Parameter"]["Status"]
+                )
             elseif Remote[1] == "MultipleAbilities" then
                 UseMultipleAbilitiesGUI(Current["Parameter"]["Ability Name"])
             elseif Remote[1] == "KilluaWishes" then
                 UseKilluaWishesGUI(Current["Parameter"]["Ability Name"])
             elseif Remote[1] == "SpeedChange" then
                 ChangeSpeed(Current["Parameter"]["Speed"])
+            elseif Remote[1] == "VoteSkipTimer" then
+                game:GetService("ReplicatedStorage").Remotes.Input:FireServer(
+                    "VoteSkipTimer"
+                )
             else
-                print(string.format("Macro error! Invalid target found for remote %s at step %s", Remote[1], CurrentStep))
+                print(string.format(
+                    "Macro error! Invalid target found for remote %s at step %s",
+                    Remote[1],
+                    CurrentStep
+                ))
             end
         else
-            local unit, position, rotation = GetUnitByTargetInfo(Current["Target"])
+            local unit, position, rotation =
+                GetUnitByTargetInfo(Current["Target"])
+
             if unit == nil and position and rotation then
                 if Remote[1] == "Summon" and Settings.macro_summon then
-                    SummonUnit(rotation, position, Current["Target"]["Name"])
+                    SummonUnit(
+                        rotation,
+                        position,
+                        Current["Target"]["Name"]
+                    )
                 else
                     local attempts = 0
+
                     repeat
                         task.wait(Settings.macro_playback_search_delay)
-                        if not Settings.macro_playback or playbackGeneration ~= runId then break end
-                        unit, position, rotation = GetUnitByTargetInfo(Current["Target"])
-                        print(string.format("Macro is attempting to find the unit for %s.", Remote[1]))
+
+                        if not Settings.macro_playback
+                            or playbackGeneration ~= runId
+                        then
+                            break
+                        end
+
+                        unit, position, rotation =
+                            GetUnitByTargetInfo(Current["Target"])
+
+                        print(string.format(
+                            "Macro is attempting to find the unit for %s.",
+                            Remote[1]
+                        ))
+
                         attempts = attempts + 1
-                    until unit ~= nil or attempts >= Settings.macro_playback_search_attempts or not Settings.macro_playback or playbackGeneration ~= runId
-                    if not Settings.macro_playback or playbackGeneration ~= runId then break end
+                    until unit ~= nil
+                        or attempts >= Settings.macro_playback_search_attempts
+                        or not Settings.macro_playback
+                        or playbackGeneration ~= runId
+
+                    if not Settings.macro_playback
+                        or playbackGeneration ~= runId
+                    then
+                        break
+                    end
+
                     if attempts >= Settings.macro_playback_search_attempts then
-                        print(string.format("Macro skipped step %s for action %s, target %s, time %s.", CurrentStep, Remote[1], Current["Target"]["Name"], Current["Time"]))
+                        print(string.format(
+                            "Macro skipped step %s for action %s, target %s, time %s.",
+                            CurrentStep,
+                            Remote[1],
+                            Current["Target"]["Name"],
+                            Current["Time"]
+                        ))
                     end
                 end
             end
+
             if unit ~= nil then
                 if Remote[1] == "Upgrade" and Settings.macro_upgrade then
                     UpgradeUnit(unit, Current["Parameter"]["Level"])
-                elseif Remote[1] == "UseSpecialMove" and Settings.macro_ability and table.find(Settings.macro_ability_blacklist, unit.Name) == nil then
+                elseif Remote[1] == "UseSpecialMove"
+                    and Settings.macro_ability
+                    and table.find(
+                        Settings.macro_ability_blacklist,
+                        unit.Name
+                    ) == nil
+                then
                     UseAbilityUnit(unit, Remote[3])
-                elseif Remote[1] == "AutoToggle" and Settings.macro_auto_ability then
-                    ActivateAutoAbilityUnit(unit, Current["Parameter"]["Ability String"], Remote[3])
-                elseif Remote[1] == "ChangePriority" and Settings.macro_priority then
+                elseif Remote[1] == "AutoToggle"
+                    and Settings.macro_auto_ability
+                then
+                    ActivateAutoAbilityUnit(
+                        unit,
+                        Current["Parameter"]["Ability String"],
+                        Remote[3]
+                    )
+                elseif Remote[1] == "ChangePriority"
+                    and Settings.macro_priority
+                then
                     ChangePriorityUnit(unit)
                 elseif Remote[1] == "Sell" and Settings.macro_sell then
                     SellUnit(unit)
@@ -1790,12 +1934,20 @@ function StartMacroPlayback()
                 else
                     print("Macro error! Remote %s is not a valid for ASTD.")
                 end
-            elseif unit ~= nil and Remote[1] ~= "Summon" then
-                print(string.format("Macro error! Cannot find unit for remote %s at step %s", Remote[1], CurrentStep))
+            elseif Remote[1] ~= "Summon" then
+                print(string.format(
+                    "Macro error! Cannot find unit for remote %s at step %s",
+                    Remote[1],
+                    CurrentStep
+                ))
             end
         end
-        if playbackGeneration ~= runId or not Settings.macro_playback then break end
-        CurrentStep, _ = next(Macros[Settings.macro_profile]["Macro"], CurrentStep)
+
+        if playbackGeneration ~= runId or not Settings.macro_playback then
+            break
+        end
+
+        CurrentStep = CurrentStep + 1
         task.wait()
     end
 end
