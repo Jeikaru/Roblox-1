@@ -1,27 +1,36 @@
-Key:UpdateV4.31
+Key:UpdateV4.4
 
-IF YOU BROUGHT THIS FROM SOMEWHERE ELSE THAT MEANS YOU GOT SCAMMED! THIS SCRIPT IS CURRENTLY FREE AND OPENSOURCE
+IF YOU GOT THIS SCRIPT FROM SOMEWHERE ELSE, YOU WERE SCAMMED. THIS SCRIPT IS FREE AND OPEN SOURCE.
 
-Updated to V4.3.2 (October 18 2026)
-- 5 Billion Commits Bugs Fixed (Please Kill me, I literally just finished my website project today :<
-- Fixed Multiple Ability Recording Despite being in the blacklisted ability in the macro section
-- Fixed Seamless
+Updated to 4.4 (October 22, 2026)
+- Reset the macro elapsed timer when recording or playback starts.
+- Fixed playback so it processes macro steps in order, including multiple steps with the same elapsed time.
+- Added VoteSkipTimer recording and playback.
 
-V4.3.1 (October 18 2026)
-- Added Auto Execute
-- Added Seamless Playback
+Updated to 4.3.2 (October 18, 2026)
+- Fixed several bugs.
+- Fixed multiple-ability recording for abilities blacklisted in the macro settings.
+- Fixed Seamless Playback.
 
-V4.3 (October 18 2026)
+Updated to 4.3.1 (October 18, 2026)
+- Added Auto Execute.
+- Added Seamless Playback.
+
+Updated to 4.3 (October 18, 2026)
 - Fixed nested multiple-ability button detection.
 - Updated multiple-ability activation.
 - Added dynamic ability-button detection.
 - Added multiple-ability dropdown selection.
-- Fixed “Refresh Detected Abilities”.
+- Fixed Refresh Detected Abilities.
 - Added validation for missing or invalid ability selections.
-- Fixed Box mode to process every unit in the group.
-- Added nested descendant searching for abilities like Time-Freezing Sands II.
+- Fixed Box mode to process every unit in a group.
+- Added nested descendant searching for abilities such as Time-Freezing Sands II.
 
-Ai placement will be in Nov 6
+AI placement is planned for November 6.
 
-report bugs at https://github.com/Jeikaru/Roblox-1/pulls
-Maintainer Does not have a discord server. but theres an old discord server from Karmapanda at https://discord.gg/BrnQQGKbvE, you can share or use some of the configs there.
+Report bugs at:
+https://github.com/Jeikaru/Roblox-1/pulls
+
+The maintainer does not have a Discord server. The old KarmaPanda server is still available:
+https://discord.gg/BrnQQGKbvE
+You can share or use configs there.
